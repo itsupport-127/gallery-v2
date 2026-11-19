@@ -93,6 +93,7 @@ function renameStudio(oldKey, newName, { lock = false } = {}) {
   if (!row || !name) return null;
   const nk = skey(name);
   const target = nk !== oldKey ? db.prepare("SELECT * FROM studios WHERE skey = ?").get(nk) : null;
+  if (target && (target.tenant_id || null) !== (row.tenant_id || null)) return { error: "Nama itu dipakai studio milik klien lain." };
   if (target) { // gabung
     db.prepare("UPDATE sessions SET studio = ? WHERE lower(trim(studio)) = ?").run(target.name, oldKey);
     db.prepare("UPDATE studios SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?), first_seen_at = MIN(COALESCE(first_seen_at, ?), ?), note = CASE WHEN note = '' THEN ? ELSE note END, blocked = MAX(blocked, ?) WHERE skey = ?")
@@ -112,6 +113,12 @@ function ensureStudio(name) {
 }
 /** Dipanggil tiap booth menghubungi galeri: catat 'terlihat', ikuti nama dari kasir. Mengembalikan baris studio. */
 function touchStudio(a, req, event) {
+  if (a.skey) { // token platform: studio sudah pasti dari tabel booth_tokens (tidak ada penggantian nama otomatis)
+    const t = now();
+    db.prepare("UPDATE studios SET first_seen_at = COALESCE(first_seen_at, ?), last_seen_at = ?, last_ip = ?, last_event = ? WHERE skey = ?").run(t, t, String(req.headers["x-real-ip"] || req.ip || "").slice(0, 64), event, a.skey);
+    db.prepare("UPDATE booth_tokens SET last_used_at = ? WHERE id = ?").run(t, a.tokenId);
+    return db.prepare("SELECT * FROM studios WHERE skey = ?").get(a.skey);
+  }
   const th = crypto.createHash("sha256").update(bearerOf(req)).digest("hex"), k = skey(a.studio), t = now();
   let row = db.prepare("SELECT * FROM studios WHERE token_hash = ?").get(th);
   if (row && row.skey !== k && !row.name_locked) { const r = renameStudio(row.skey, a.studio); row = r ? r.row : row; } // nama di kasir diganti -> ikut
@@ -123,7 +130,8 @@ function touchStudio(a, req, event) {
 /** Catat + tolak bila studio diputus admin. null = sudah dibalas 403. */
 function studioGuard(a, req, res, event) {
   const row = touchStudio(a, req, event);
-  if (row.blocked) { res.status(403).json({ error: "Studio ini diputus dari galeri oleh admin. Hubungi admin.", blocked: true }); return null; }
+  const ten = row.tenant_id ? db.prepare("SELECT active FROM tenants WHERE id = ?").get(row.tenant_id) : null;
+  if (row.blocked || (ten && !ten.active)) { res.status(403).json({ error: "Studio ini diputus dari galeri oleh admin. Hubungi admin.", blocked: true }); return null; }
   return row;
 }
 
@@ -443,8 +451,16 @@ const normPerms = (list) => { const set = new Set((Array.isArray(list) ? list : 
 const parsePerms = (raw) => { try { const v = JSON.parse(raw || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }; // data hak akses rusak = tanpa hak (jangan sampai menjatuhkan daftar pengguna)
 const hashPw = (pw) => { const salt = crypto.randomBytes(16); return `s1$${salt.toString("base64url")}$${crypto.scryptSync(String(pw), salt, 32).toString("base64url")}`; };
 const checkPw = (pw, stored) => { const [v, sl, h] = String(stored || "").split("$"); if (v !== "s1" || !sl || !h) return false; return sameSig(crypto.scryptSync(String(pw), Buffer.from(sl, "base64url"), 32).toString("base64url"), h); };
-const envAdmin = () => ({ id: 0, username: process.env.ADMIN_USER || "admin", name: "Admin", admin: true, env: true, perms: new Set(Object.keys(PERMS)) });
-const principalOf = (row) => { const admin = row.role === "admin"; const list = parsePerms(row.perms); return { id: row.id, username: row.username, name: row.name || row.username, admin, env: false, perms: new Set(admin ? Object.keys(PERMS) : normPerms(list)) }; };
+// Hak yang boleh dimiliki akun klien (tenant): hanya melihat studio & link miliknya. Tidak pernah: penyimpanan, pengaturan umum, pengguna, token booth.
+const TENANT_PERMS = new Set(["studio.view", "link.view", "link.edit", "upload"]);
+const envAdmin = () => ({ id: 0, username: process.env.ADMIN_USER || "admin", name: "Admin", admin: true, env: true, tenantId: null, perms: new Set(Object.keys(PERMS)) });
+const principalOf = (row) => {
+  const tenantId = row.tenant_id || null, admin = row.role === "admin" && !tenantId; // akun klien tidak pernah admin penuh
+  let perms = new Set(admin ? Object.keys(PERMS) : normPerms(parsePerms(row.perms)));
+  if (tenantId) perms = new Set([...perms].filter((x) => TENANT_PERMS.has(x)));
+  return { id: row.id, username: row.username, name: row.name || row.username, admin, env: false, tenantId, perms };
+};
+const tenantActive = (id) => { const t = db.prepare("SELECT active FROM tenants WHERE id = ?").get(id); return !!t && !!t.active; };
 const userSig = (row, exp) => sigOf(`u${row.id}~${exp}~${String(row.pass_hash).slice(-16)}`); // ganti sandi / nonaktif = sesi lama otomatis mati
 const userCookie = (row, req) => { const exp = Date.now() + SESSION_MS; return `${COOKIE}=${row.id}~${exp}.${userSig(row, exp)}; Max-Age=${SESSION_MS / 1000}; ${cookieAttrs(req)}`; };
 function sessionUser(req) {
@@ -453,8 +469,14 @@ function sessionUser(req) {
   if (!m || Number(m[2]) < Date.now()) return null;
   if (!m[1]) return sameSig(sig, sessionSig(m[2])) ? envAdmin() : null;
   const row = db.prepare("SELECT * FROM users WHERE id = ? AND active = 1").get(Number(m[1]));
+  if (row && row.tenant_id && !tenantActive(row.tenant_id)) return null; // klien dinonaktifkan = semua akunnya keluar
   return row && sameSig(sig, userSig(row, m[2])) ? principalOf(row) : null;
 }
+// ---- Pembatasan per klien: akun klien hanya melihat/mengubah studio (dan sesinya) milik klien itu ----
+const tid = (req) => req.user?.tenantId || null;
+const studioInScope = (req, name) => { const t = tid(req); if (!t) return true; const r = db.prepare("SELECT tenant_id FROM studios WHERE skey = ?").get(skey(name)); return !!r && r.tenant_id === t; };
+const sessionInScope = (req, token) => { if (!tid(req)) return true; const r = db.prepare("SELECT studio FROM sessions WHERE token = ?").get(token); return !!r && studioInScope(req, r.studio); };
+const inTenant = "lower(trim(s.studio)) IN (SELECT skey FROM studios WHERE tenant_id = ?)"; // dipakai di query sesi (alias s)
 const can = (req, perm) => !!req.user && (req.user.admin || req.user.perms.has(perm));
 const need = (perm) => (req, res, next) => can(req, perm) ? next() : res.status(403).json({ error: "Akunmu tidak punya hak untuk tindakan ini." });
 const needAdmin = (req, res, next) => req.user?.admin ? next() : res.status(403).json({ error: "Hanya admin yang boleh mengelola pengguna." });
@@ -509,6 +531,7 @@ app.post("/admin/api/upload/prepare", adminAuth, need("upload"), (req, res) => {
   const b = req.body || {};
   const studio = String(b.studio || "").trim().slice(0, 60);
   if (!studio) return res.status(400).json({ error: "Nama studio wajib diisi." });
+  if (tid(req) && !studioInScope(req, studio)) return res.status(403).json({ error: "Studio itu bukan milik klienmu." }); // akun klien tidak boleh membuat studio baru
   const r = registerSession(ensureStudio(studio).name, { token: b.token, mode: b.mode, studioCode: b.studioCode, files: b.files, retry: b.retry, manual: true, social: b.social, txNo: b.txNo });
   if (r.error) return res.status(r.status).json({ error: r.error });
   res.json({ ...r.body, uploads: r.body.uploads.map((u) => ({ fid: u.fid, path: `/admin/api/upload/${r.body.token}/${safe(u.fid, 30)}`, contentType: u.contentType })) });
@@ -517,7 +540,7 @@ app.post("/admin/api/upload/prepare", adminAuth, need("upload"), (req, res) => {
 app.put("/admin/api/upload/:token/:fid", adminAuth, need("upload"), async (req, res) => {
   try {
     const row = db.prepare("SELECT * FROM files WHERE token = ? AND fid = ?").get(normToken(req.params.token), safe(req.params.fid, 30));
-    if (!row) return res.status(404).json({ error: "File belum didaftarkan (prepare)." });
+    if (!row || !sessionInScope(req, row.token)) return res.status(404).json({ error: "File belum didaftarkan (prepare)." });
     const b = bucketById(row.bucket_id); const len = Number(req.headers["content-length"]) || 0;
     if (!b || !len || len > MAX_FILE) return res.status(400).json({ error: "Ukuran file tidak valid." });
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15 * 60 * 1000);
@@ -533,22 +556,27 @@ app.put("/admin/api/upload/:token/:fid", adminAuth, need("upload"), async (req, 
 const maskB = (b, used) => ({ id: b.id, name: b.name, endpoint: b.endpoint, region: b.region, bucket: b.bucket, accessKey: b.access_key, secretSet: !!b.secret_key, enabled: !!b.enabled, priority: b.priority, quotaGB: b.quota_bytes ? Math.round(b.quota_bytes / 1e7) / 100 : 0, usedGB: Math.round((used.get(b.id) || 0) / 1e7) / 100, health: b.health || "", healthMsg: b.health_msg || "", healthAt: b.health_at || null });
 app.get("/admin", adminAuth, (_req, res) => res.type("html").send(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")));
 app.get("/admin/api/state", adminAuth, (req, res) => {
-  const used = usedBytes();
+  const used = usedBytes(), t = tid(req);
+  const sw = t ? `WHERE ${inTenant}` : "", fw = t ? `AND ${inTenant}` : "", a = t ? [t] : [];
   res.json({
     retentionDays: retentionDays(), zipEnabled: zipEnabled(), zipMode: zipMode(), publicUrl: PUBLIC_URL(),
-    buckets: db.prepare("SELECT * FROM buckets ORDER BY priority, id").all().map((b) => { const m = maskB(b, used); return can(req, "storage.view") ? m : { ...m, endpoint: "", bucket: "", accessKey: "", region: "", healthMsg: "" }; }),
-    stats: { sessions: db.prepare("SELECT COUNT(*) n FROM sessions").get().n, files: db.prepare("SELECT COUNT(*) n FROM files WHERE state = 'ok'").get().n, pending: db.prepare("SELECT COUNT(*) n FROM files WHERE state = 'pending'").get().n },
-    studios: db.prepare("SELECT st.name studio, (SELECT MAX(s.studio_code) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) code, (SELECT COUNT(*) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) sessions, COALESCE(st.last_seen_at, 0) last FROM studios st ORDER BY last DESC, st.name").all(),
+    buckets: t ? [] : db.prepare("SELECT * FROM buckets ORDER BY priority, id").all().map((b) => { const m = maskB(b, used); return can(req, "storage.view") ? m : { ...m, endpoint: "", bucket: "", accessKey: "", region: "", healthMsg: "" }; }),
+    stats: {
+      sessions: db.prepare(`SELECT COUNT(*) n FROM sessions s ${sw}`).get(...a).n,
+      files: db.prepare(`SELECT COUNT(*) n FROM files f JOIN sessions s ON s.token = f.token WHERE f.state = 'ok' ${fw}`).get(...a).n,
+      pending: db.prepare(`SELECT COUNT(*) n FROM files f JOIN sessions s ON s.token = f.token WHERE f.state = 'pending' ${fw}`).get(...a).n,
+    },
+    studios: db.prepare(`SELECT st.name studio, (SELECT MAX(s.studio_code) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) code, (SELECT COUNT(*) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) sessions, COALESCE(st.last_seen_at, 0) last FROM studios st ${t ? "WHERE st.tenant_id = ?" : ""} ORDER BY last DESC, st.name`).all(...a),
   });
 });
 // ---- Pengguna & hak akses (hanya admin) ----
 app.get("/admin/api/me", adminAuth, (req, res) => {
   const u = req.user;
-  res.json({ username: u.username, name: u.name, admin: u.admin, env: u.env, perms: [...u.perms], catalog: PERMS, presets: PRESETS });
+  res.json({ username: u.username, name: u.name, admin: u.admin, env: u.env, tenantId: u.tenantId || null, tenantName: u.tenantId ? db.prepare("SELECT name FROM tenants WHERE id = ?").get(u.tenantId)?.name || "" : "", perms: [...u.perms], catalog: PERMS, presets: PRESETS });
 });
-const userRow = (r) => ({ id: r.id, username: r.username, name: r.name, role: r.role, perms: r.role === "admin" ? Object.keys(PERMS) : normPerms(parsePerms(r.perms)), active: !!r.active, createdAt: r.created_at, lastLoginAt: r.last_login_at });
+const userRow = (r) => ({ id: r.id, username: r.username, name: r.name, role: r.tenant_id ? "staff" : r.role, tenantId: r.tenant_id || null, tenantName: r.tenant_name || "", perms: r.tenant_id ? normPerms(parsePerms(r.perms)).filter((x) => TENANT_PERMS.has(x)) : r.role === "admin" ? Object.keys(PERMS) : normPerms(parsePerms(r.perms)), active: !!r.active, createdAt: r.created_at, lastLoginAt: r.last_login_at });
 app.get("/admin/api/users", adminAuth, needAdmin, (_req, res) => {
-  res.json({ envUser: process.env.ADMIN_USER || "admin", users: db.prepare("SELECT * FROM users ORDER BY id").all().map(userRow), catalog: PERMS, presets: PRESETS });
+  res.json({ envUser: process.env.ADMIN_USER || "admin", users: db.prepare("SELECT u.*, (SELECT name FROM tenants WHERE id = u.tenant_id) tenant_name FROM users u ORDER BY u.id").all().map(userRow), catalog: PERMS, presets: PRESETS, tenantPerms: [...TENANT_PERMS] });
 });
 const cleanName = (v) => String(v || "").replace(/[<>]/g, "").trim().slice(0, 60);
 app.post("/admin/api/users", adminAuth, needAdmin, (req, res) => {
@@ -557,19 +585,24 @@ app.post("/admin/api/users", adminAuth, needAdmin, (req, res) => {
   if (username === String(process.env.ADMIN_USER || "admin").toLowerCase()) return res.status(409).json({ error: "Username itu dipakai akun admin utama (.env)." });
   if (String(b.password || "").length < 8 || String(b.password).length > 200) return res.status(400).json({ error: "Kata sandi minimal 8 karakter." });
   if (db.prepare("SELECT 1 FROM users WHERE username = ?").get(username)) return res.status(409).json({ error: "Username sudah dipakai." });
-  const role = b.role === "admin" ? "admin" : "staff", perms = role === "admin" ? [] : normPerms(b.perms);
-  const r = db.prepare("INSERT INTO users (username, name, pass_hash, role, perms, active, created_at) VALUES (?,?,?,?,?,?,?)").run(username, cleanName(b.name) || username, hashPw(b.password), role, JSON.stringify(perms), b.active === false ? 0 : 1, now());
+  const tenantId = b.tenantId ? Number(b.tenantId) : null;
+  if (tenantId && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(tenantId)) return res.status(400).json({ error: "Klien tidak ditemukan." });
+  const role = !tenantId && b.role === "admin" ? "admin" : "staff"; // akun klien selalu staf
+  let perms = role === "admin" ? [] : normPerms(b.perms); if (tenantId) perms = perms.filter((x) => TENANT_PERMS.has(x));
+  const r = db.prepare("INSERT INTO users (username, name, pass_hash, role, perms, active, created_at, tenant_id) VALUES (?,?,?,?,?,?,?,?)").run(username, cleanName(b.name) || username, hashPw(b.password), role, JSON.stringify(perms), b.active === false ? 0 : 1, now(), tenantId);
   res.json({ ok: true, id: Number(r.lastInsertRowid) });
 });
 app.post("/admin/api/users/:id", adminAuth, needAdmin, (req, res) => {
   const id = Number(req.params.id), row = db.prepare("SELECT * FROM users WHERE id = ?").get(id), b = req.body || {};
   if (!row) return res.status(404).json({ error: "Pengguna tidak ditemukan." });
-  const role = b.role == null ? row.role : b.role === "admin" ? "admin" : "staff", active = b.active == null ? row.active : b.active ? 1 : 0;
+  let tenantId = row.tenant_id || null;
+  if (b.tenantId !== undefined) { tenantId = b.tenantId ? Number(b.tenantId) : null; if (tenantId && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(tenantId)) return res.status(400).json({ error: "Klien tidak ditemukan." }); }
+  const role = tenantId ? "staff" : b.role == null ? row.role : b.role === "admin" ? "admin" : "staff", active = b.active == null ? row.active : b.active ? 1 : 0;
   if (id === req.user.id && (role !== "admin" || !active)) return res.status(400).json({ error: "Kamu tidak bisa menurunkan atau menonaktifkan akunmu sendiri." });
-  const perms = role === "admin" ? [] : b.perms == null ? normPerms(parsePerms(row.perms)) : normPerms(b.perms);
+  let perms = role === "admin" ? [] : b.perms == null ? normPerms(parsePerms(row.perms)) : normPerms(b.perms); if (tenantId) perms = perms.filter((x) => TENANT_PERMS.has(x));
   let hash = row.pass_hash;
   if (b.password) { if (String(b.password).length < 8 || String(b.password).length > 200) return res.status(400).json({ error: "Kata sandi minimal 8 karakter." }); hash = hashPw(b.password); }
-  db.prepare("UPDATE users SET name = ?, role = ?, perms = ?, active = ?, pass_hash = ? WHERE id = ?").run(b.name == null ? row.name : cleanName(b.name) || row.username, role, JSON.stringify(perms), active, hash, id);
+  db.prepare("UPDATE users SET name = ?, role = ?, perms = ?, active = ?, pass_hash = ?, tenant_id = ? WHERE id = ?").run(b.name == null ? row.name : cleanName(b.name) || row.username, role, JSON.stringify(perms), active, hash, tenantId, id);
   res.json({ ok: true });
 });
 app.delete("/admin/api/users/:id", adminAuth, needAdmin, (req, res) => {
@@ -587,6 +620,52 @@ app.post("/admin/api/me/password", adminAuth, (req, res) => {
   db.prepare("UPDATE users SET pass_hash = ? WHERE id = ?").run(hashPw(b.password), row.id);
   res.set("Set-Cookie", userCookie(db.prepare("SELECT * FROM users WHERE id = ?").get(row.id), req)).json({ ok: true });
 });
+// ---- Klien (tenant): hanya super admin ----
+const tenantRow = (r) => ({ id: r.id, name: r.name, note: r.note, active: !!r.active, createdAt: r.created_at, studios: r.studios || 0, users: r.users || 0 });
+app.get("/admin/api/tenants", adminAuth, needAdmin, (_req, res) => {
+  res.json({ tenants: db.prepare("SELECT t.*, (SELECT COUNT(*) FROM studios WHERE tenant_id = t.id) studios, (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) users FROM tenants t ORDER BY t.name").all().map(tenantRow),
+    unassigned: db.prepare("SELECT COUNT(*) n FROM studios WHERE tenant_id IS NULL").get().n });
+});
+app.post("/admin/api/tenants", adminAuth, needAdmin, (req, res) => {
+  const b = req.body || {}, name = cleanName(b.name);
+  if (!name) return res.status(400).json({ error: "Nama klien wajib diisi." });
+  if (db.prepare("SELECT 1 FROM tenants WHERE name = ?").get(name)) return res.status(409).json({ error: "Klien dengan nama itu sudah ada." });
+  const r = db.prepare("INSERT INTO tenants (name, note, active, created_at) VALUES (?,?,1,?)").run(name, String(b.note || "").slice(0, 200), now());
+  res.json({ ok: true, id: Number(r.lastInsertRowid) });
+});
+app.post("/admin/api/tenants/:id", adminAuth, needAdmin, (req, res) => {
+  const id = Number(req.params.id), row = db.prepare("SELECT * FROM tenants WHERE id = ?").get(id), b = req.body || {};
+  if (!row) return res.status(404).json({ error: "Klien tidak ditemukan." });
+  const name = b.name == null ? row.name : cleanName(b.name);
+  if (!name) return res.status(400).json({ error: "Nama klien tidak boleh kosong." });
+  const dup = db.prepare("SELECT id FROM tenants WHERE name = ? AND id != ?").get(name, id); if (dup) return res.status(409).json({ error: "Klien dengan nama itu sudah ada." });
+  db.prepare("UPDATE tenants SET name = ?, note = ?, active = ? WHERE id = ?").run(name, b.note == null ? row.note : String(b.note).slice(0, 200), b.active == null ? row.active : b.active ? 1 : 0, id);
+  res.json({ ok: true });
+});
+app.delete("/admin/api/tenants/:id", adminAuth, needAdmin, (req, res) => {
+  const id = Number(req.params.id), n = db.prepare("SELECT (SELECT COUNT(*) FROM studios WHERE tenant_id = ?) s, (SELECT COUNT(*) FROM users WHERE tenant_id = ?) u").get(id, id);
+  if (n.s || n.u) return res.status(409).json({ error: `Klien ini masih punya ${n.s} studio dan ${n.u} akun. Pindahkan atau hapus dulu.` });
+  db.prepare("DELETE FROM tenants WHERE id = ?").run(id);
+  res.json({ ok: true });
+});
+// ---- Token booth (satu per booth; hanya hash disimpan; token asli tampil SEKALI saat dibuat) ----
+const tokRow = (r) => ({ id: r.id, label: r.label, createdAt: r.created_at, lastUsedAt: r.last_used_at || null, revokedAt: r.revoked_at || null });
+app.get("/admin/api/studios/:key/tokens", adminAuth, needAdmin, (req, res) => {
+  res.json({ tokens: db.prepare("SELECT * FROM booth_tokens WHERE skey = ? ORDER BY id DESC").all(skey(req.params.key)).map(tokRow) });
+});
+app.post("/admin/api/studios/:key/tokens", adminAuth, needAdmin, (req, res) => {
+  const st = db.prepare("SELECT skey FROM studios WHERE skey = ?").get(skey(req.params.key));
+  if (!st) return res.status(404).json({ error: "Studio tidak ditemukan." });
+  if (db.prepare("SELECT COUNT(*) n FROM booth_tokens WHERE skey = ? AND revoked_at IS NULL").get(st.skey).n >= 10) return res.status(409).json({ error: "Maksimal 10 token aktif per studio. Cabut yang tidak dipakai." });
+  const token = auth.newToken();
+  db.prepare("INSERT INTO booth_tokens (skey, token_hash, label, created_at) VALUES (?,?,?,?)").run(st.skey, auth.sha(token), String(req.body?.label || "").replace(/[<>]/g, "").trim().slice(0, 60), now());
+  res.set("Cache-Control", "no-store").json({ ok: true, token });
+});
+app.delete("/admin/api/studios/:key/tokens/:id", adminAuth, needAdmin, (req, res) => {
+  const r = db.prepare("UPDATE booth_tokens SET revoked_at = ? WHERE id = ? AND skey = ? AND revoked_at IS NULL").run(now(), Number(req.params.id), skey(req.params.key));
+  res.json({ ok: true, revoked: Number(r.changes) > 0 });
+});
+
 // ---- Cek koneksi menyeluruh: bucket, kasir, dan laporan sinkron tiap booth ----
 app.post("/admin/api/diagnostics", adminAuth, need("storage.view"), async (_req, res) => {
   const [buckets, kasir] = await Promise.all([
@@ -614,19 +693,19 @@ app.post("/admin/api/diagnostics", adminAuth, need("storage.view"), async (_req,
 
 // ---- Kelola studio: pantau online/offline, edit, gabung, putuskan/sambungkan, hapus ----
 const studioRow = (r) => ({
-  key: r.skey, name: r.name, note: r.note, blocked: !!r.blocked, status: studioStatus(r), retentionDays: r.retention_days || null,
+  key: r.skey, tenantId: r.tenant_id || null, tenantName: r.tenant_name || "", name: r.name, note: r.note, blocked: !!r.blocked, status: studioStatus(r), retentionDays: r.retention_days || null,
   firstSeenAt: r.first_seen_at || null, lastSeenAt: r.last_seen_at || null, lastEvent: r.last_event || "", lastIp: r.last_ip || "",
   sync: (() => { try { return r.sync_json ? JSON.parse(r.sync_json) : null; } catch { return null; } })(), syncAt: r.sync_at || null, sessions: r.sessions || 0, files: r.files || 0, bytes: r.bytes || 0, pending: r.pending || 0, lastUploadAt: r.last_upload || null, nameLocked: !!r.name_locked,
 });
-const studioList = () => db.prepare(`SELECT st.*,
+const studioList = (tenantId = null) => db.prepare(`SELECT st.*, (SELECT name FROM tenants WHERE id = st.tenant_id) tenant_name,
   (SELECT COUNT(*) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) sessions,
   (SELECT COUNT(*) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey AND f.state = 'ok') files,
   (SELECT COUNT(*) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey AND f.state = 'pending') pending,
   (SELECT COALESCE(SUM(f.size), 0) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey AND f.state = 'ok') bytes,
   (SELECT MAX(f.uploaded_at) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey) last_upload
-  FROM studios st ORDER BY (st.last_seen_at IS NULL), st.last_seen_at DESC, st.name`).all();
-app.get("/admin/api/studios", adminAuth, need("studio.view"), (_req, res) => {
-  const list = studioList().map(studioRow);
+  FROM studios st ${tenantId ? "WHERE st.tenant_id = ?" : ""} ORDER BY (st.last_seen_at IS NULL), st.last_seen_at DESC, st.name`).all(...(tenantId ? [tenantId] : []));
+app.get("/admin/api/studios", adminAuth, need("studio.view"), (req, res) => {
+  const list = studioList(tid(req)).map(studioRow);
   res.json({ now: now(), onlineMs: ONLINE_MS, studios: list, counts: { online: list.filter((x) => x.status === "online").length, total: list.length, blocked: list.filter((x) => x.blocked).length } });
 });
 const retOf = (v) => { if (v === "" || v == null) return null; const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(1, Math.min(365, n)) : null; };
@@ -634,17 +713,25 @@ app.post("/admin/api/studios", adminAuth, need("studio.edit"), (req, res) => {
   const b = req.body || {}, name = String(b.name || "").replace(/[<>]/g, "").trim().slice(0, 60);
   if (!name) return res.status(400).json({ error: "Nama studio wajib diisi." });
   if (db.prepare("SELECT 1 FROM studios WHERE skey = ?").get(skey(name))) return res.status(409).json({ error: "Studio dengan nama itu sudah ada." });
+  const tenantId = b.tenantId ? Number(b.tenantId) : null;
+  if (tenantId && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(tenantId)) return res.status(400).json({ error: "Klien tidak ditemukan." });
   const row = ensureStudio(name);
-  db.prepare("UPDATE studios SET note = ?, retention_days = ?, name_locked = 1 WHERE skey = ?").run(String(b.note || "").slice(0, 200), retOf(b.retentionDays), row.skey);
+  db.prepare("UPDATE studios SET note = ?, retention_days = ?, name_locked = 1, tenant_id = ? WHERE skey = ?").run(String(b.note || "").slice(0, 200), retOf(b.retentionDays), tenantId, row.skey);
   res.json({ ok: true });
 });
 app.post("/admin/api/studios/:key", adminAuth, need("studio.edit"), (req, res) => {
   const key = skey(req.params.key), b = req.body || {};
   let row = db.prepare("SELECT * FROM studios WHERE skey = ?").get(key);
-  if (!row) return res.status(404).json({ error: "Studio tidak ditemukan." });
+  if (!row || !studioInScope(req, key)) return res.status(404).json({ error: "Studio tidak ditemukan." });
+  if (b.tenantId !== undefined) { // pindah klien: hanya akun non-klien
+    if (tid(req)) return res.status(403).json({ error: "Akunmu tidak boleh memindahkan studio." });
+    const t = b.tenantId ? Number(b.tenantId) : null;
+    if (t && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(t)) return res.status(400).json({ error: "Klien tidak ditemukan." });
+    db.prepare("UPDATE studios SET tenant_id = ? WHERE skey = ?").run(t, key); row.tenant_id = t;
+  }
   let merged = false;
   if (b.name != null && String(b.name).trim() && String(b.name).trim() !== row.name) {
-    const r = renameStudio(key, b.name, { lock: true }); if (!r) return res.status(400).json({ error: "Nama tidak valid." });
+    const r = renameStudio(key, b.name, { lock: true }); if (!r || r.error) return res.status(r?.error ? 409 : 400).json({ error: r?.error || "Nama tidak valid." });
     merged = r.merged; row = r.row;
   }
   if (b.note != null) db.prepare("UPDATE studios SET note = ? WHERE skey = ?").run(String(b.note).slice(0, 200), row.skey);
@@ -654,13 +741,14 @@ app.post("/admin/api/studios/:key", adminAuth, need("studio.edit"), (req, res) =
 });
 app.delete("/admin/api/studios/:key", adminAuth, need("studio.edit"), async (req, res) => {
   const key = skey(req.params.key), row = db.prepare("SELECT * FROM studios WHERE skey = ?").get(key);
-  if (!row) return res.json({ ok: true });
+  if (!row || !studioInScope(req, key)) return res.json({ ok: true });
   if (row.blocked) return res.status(400).json({ error: "Studio sedang diputus. Sambungkan dulu, atau biarkan tetap terputus supaya booth-nya terblokir." });
   const toks = db.prepare("SELECT token FROM sessions WHERE lower(trim(studio)) = ?").all(key).map((x) => x.token);
   if (toks.length && !(req.query.purge === "1")) return res.status(409).json({ error: `Studio ini masih punya ${toks.length} link.`, sessions: toks.length });
   let left = 0;
   for (const t of toks) { db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").run(now() - 1000, t); if (!(await purgeSession(t))) left++; }
   if (left) return res.json({ ok: true, deleted: false, left });
+  db.prepare("DELETE FROM booth_tokens WHERE skey = ?").run(key);
   db.prepare("DELETE FROM studios WHERE skey = ?").run(key);
   res.json({ ok: true, deleted: true, purged: toks.length });
 });
@@ -672,6 +760,7 @@ app.get("/admin/api/sessions", adminAuth, need("link.view"), (req, res) => {
   const q = String(req.query.q || "").trim().slice(0, 60), studio = String(req.query.studio || "").slice(0, 80), source = String(req.query.source || "");
   const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 30)), offset = Math.max(0, Number(req.query.offset) || 0);
   const w = [], a = [];
+  if (tid(req)) { w.push(inTenant); a.push(tid(req)); }
   if (q) { const t = likeEsc(q.replace(/[\s-]/g, "")), n = likeEsc(q); w.push("(s.token LIKE ? ESCAPE '\\' COLLATE NOCASE OR s.studio LIKE ? ESCAPE '\\' OR s.studio_code LIKE ? ESCAPE '\\' OR s.tx_no LIKE ? ESCAPE '\\' COLLATE NOCASE)"); a.push(`%${t}%`, `%${n}%`, `%${n}%`, `%${n}%`); }
   if (studio) { w.push("s.studio = ?"); a.push(studio); }
   if (source === "manual") w.push("s.manual = 1"); else if (source === "booth") w.push("s.manual = 0");
@@ -686,7 +775,7 @@ app.get("/admin/api/sessions", adminAuth, need("link.view"), (req, res) => {
 const MAX_EXPIRY_MS = 730 * 86400000;
 app.post("/admin/api/sessions/:token", adminAuth, need("link.edit"), (req, res) => {
   const s = db.prepare("SELECT * FROM sessions WHERE token = ?").get(req.params.token);
-  if (!s) return res.status(404).json({ error: "Sesi tidak ditemukan." });
+  if (!s || !sessionInScope(req, s.token)) return res.status(404).json({ error: "Sesi tidak ditemukan." });
   const b = req.body || {};
   if (b.expiresAt != null) {
     const t = Number(b.expiresAt);
@@ -697,13 +786,14 @@ app.post("/admin/api/sessions/:token", adminAuth, need("link.edit"), (req, res) 
   if (b.studio != null) {
     const name = String(b.studio).replace(/[<>]/g, "").trim().slice(0, 60);
     if (!name) return res.status(400).json({ error: "Nama studio tidak boleh kosong." });
+    if (!studioInScope(req, name)) return res.status(403).json({ error: "Studio tujuan bukan milik klienmu." });
     db.prepare("UPDATE sessions SET studio = ? WHERE token = ?").run(name, s.token);
   }
   res.json({ ok: true });
 });
 app.delete("/admin/api/sessions/:token", adminAuth, need("link.edit"), async (req, res) => {
   const s = db.prepare("SELECT token FROM sessions WHERE token = ?").get(req.params.token);
-  if (!s) return res.json({ ok: true, deleted: true });
+  if (!s || !sessionInScope(req, s.token)) return res.json({ ok: true, deleted: true });
   db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").run(now() - 1000, s.token); // link langsung mati
   const gone = await purgeSession(s.token);
   res.json({ ok: true, deleted: gone }); // false = sebagian file di cloud belum terhapus; dibereskan otomatis berkala
@@ -711,7 +801,7 @@ app.delete("/admin/api/sessions/:token", adminAuth, need("link.edit"), async (re
 // Aksi massal: { action: "delete" | "extend", tokens: [...], days }  (extend = tambah N hari dari masa berlaku sekarang)
 app.post("/admin/api/sessions-bulk", adminAuth, need("link.edit"), async (req, res) => {
   const b = req.body || {};
-  const tokens = [...new Set((Array.isArray(b.tokens) ? b.tokens : []).map((x) => String(x)))].slice(0, 200);
+  const tokens = [...new Set((Array.isArray(b.tokens) ? b.tokens : []).map((x) => String(x)))].filter((t) => sessionInScope(req, t)).slice(0, 200);
   if (!tokens.length) return res.status(400).json({ error: "Tidak ada sesi dipilih." });
   let done = 0, pending = 0;
   if (b.action === "extend") {

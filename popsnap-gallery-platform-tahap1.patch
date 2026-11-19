@@ -1,0 +1,702 @@
+diff --git a/.env.example b/.env.example
+index 9ae45f2..94aa6a3 100644
+--- a/.env.example
++++ b/.env.example
+@@ -5,7 +5,8 @@ PUBLIC_URL=https://foto.domainanda.com
+ ADMIN_USER=admin
+ ADMIN_PASSWORD=ganti-dengan-password-panjang
+ 
+-# Alamat app kasir (untuk memeriksa token studio — token yang SAMA dengan yang dipakai booth untuk sinkron ke kasir).
++# [LEGACY] Alamat app kasir. Tidak diperlukan lagi bila booth memakai token yang diterbitkan platform ini (Admin > Studio > Token booth).
++# Dulu dipakai untuk memeriksa token studio — token yang SAMA dengan yang dipakai booth untuk sinkron ke kasir).
+ # Boleh kosong bila memakai STUDIO_TOKENS.
+ KASIR_URL=https://kasir.domainanda.com
+ 
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index a1cc706..eea07cf 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -16,6 +16,7 @@ jobs:
+           cache: npm
+       - run: npm ci
+       - run: node test/run.js
++      - run: node test/tenant.js
+       - name: Cek celah keamanan dependency (hanya peringatan, tidak menggagalkan tes)
+         continue-on-error: true
+         run: npm audit --omit=dev --audit-level=high
+diff --git a/README.md b/README.md
+index fa040ba..88b0277 100644
+--- a/README.md
++++ b/README.md
+@@ -78,3 +78,16 @@ Akun `ADMIN_USER` / `ADMIN_PASSWORD` di `.env` selalu **admin penuh** (tidak bis
+ * Perubahan hak, nonaktifkan, atau hapus akun **langsung berlaku** (sesi diperiksa tiap permintaan). Ganti sandi memutus sesi lama. Staf bisa ganti sandi sendiri lewat tombol di bawah menu.
+ * Pembatasan dijaga di server (HTTP 403), bukan hanya disembunyikan di tampilan. Detail bucket (endpoint, nama bucket, access key) disembunyikan dari akun tanpa hak "lihat penyimpanan".
+ 
++
++## Platform multi-klien (tahap 1)
++
++Galeri ini sekaligus menjadi pusat pengelolaan banyak studio:
++
++* **Klien (tenant)** = pelanggan Anda; punya banyak studio. Menu **Klien** (super admin saja): tambah, ubah, nonaktifkan. Klien nonaktif = semua booth dan akunnya langsung berhenti.
++* **Studio** dibagikan ke klien (Studio > Edit > Klien). Studio yang belum dibagikan hanya terlihat super admin.
++* **Akun klien**: di menu Pengguna pilih Klien. Akun klien selalu staf dengan hak terbatas (lihat studio, lihat/atur link, unggah manual) dan **hanya melihat studio milik klien itu**: daftar studio, link, ringkasan, unggah manual, pencarian. Hak penyimpanan, pengaturan umum, pengguna, token, dan pemutusan studio tidak pernah bisa dimiliki akun klien. Pembatasan dijaga di server.
++* **Token booth**: Studio > *Token booth* > buat. Satu token per booth (`pst_...`), token asli tampil sekali, hanya hash yang disimpan, bisa dicabut satu per satu. Tempel di booth: Admin > Pembayaran > Galeri cloud / sinkron. Token lama (`STUDIO_TOKENS`, kasir) tetap jalan sampai diganti.
++* **Masa simpan 48 jam**: Pengaturan > Masa simpan = 2 hari (atau per studio). Penghapusan jalan tiap 30 menit.
++* Uji: `npm test` (termasuk `test/tenant.js`: isolasi antar klien, hak akun klien, siklus token booth).
++
++Berikutnya: riwayat transaksi & omzet per studio/klien, status booth (kamera/printer/kertas) + alert, atur pengaturan booth dari web.
+diff --git a/package.json b/package.json
+index 3cb6074..0cb4fe4 100644
+--- a/package.json
++++ b/package.json
+@@ -8,7 +8,7 @@
+   },
+   "scripts": {
+     "start": "node src/server.js",
+-    "test": "node test/run.js"
++    "test": "node test/run.js && node test/tenant.js"
+   },
+   "dependencies": {
+     "express": "^5.2.1"
+diff --git a/src/admin.html b/src/admin.html
+index e62161c..dc12ac4 100644
+--- a/src/admin.html
++++ b/src/admin.html
+@@ -118,6 +118,7 @@ tr.blk td{background:#FFF3F5}
+  <nav id="nav">
+   <a href="#ringkasan" data-p="ringkasan"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Ringkasan</span></a>
+   <a href="#studio" data-p="studio" data-need="studio.view"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Studio</span></a>
++  <a href="#klien" data-p="klien" data-need="@admin"><svg viewBox="0 0 24 24"><path d="M3 20V9l6-4 6 4v11M15 20V12h6v8M7 20v-4h4v4"/></svg><span>Klien</span></a>
+   <a href="#link" data-p="link" data-need="link.view"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span>Link pelanggan</span></a>
+   <a href="#penyimpanan" data-p="penyimpanan" data-need="storage.view"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 8.5a4.5 4.5 0 0 1 .5 9Z"/></svg><span>Penyimpanan cloud</span></a>
+   <a href="#pengguna" data-p="pengguna" data-need="@admin"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Pengguna</span></a>
+@@ -148,6 +149,7 @@ tr.blk td{background:#FFF3F5}
+ <dialog id="s_dlg"><h2 id="s_dt">Tambah studio</h2>
+  <label for="s_nm">Nama studio</label><input id="s_nm" maxlength="60" placeholder="mis. Studio Emma">
+  <p class="muted" id="s_nmh" style="margin:6px 0 0"></p>
++ <div id="s_tenbox" data-need="@admin"><label for="s_ten" style="margin-top:12px">Klien</label><select id="s_ten"></select></div>
+  <label for="s_note" style="margin-top:12px">Catatan (lokasi, PIC, dll.)</label><input id="s_note" maxlength="200" placeholder="mis. Cabang Bandung, PIC Rina">
+  <label for="s_ret" style="margin-top:12px">Masa simpan link (hari)</label><input id="s_ret" type="number" min="1" max="365" placeholder="kosong = ikut pengaturan umum">
+  <p class="muted" style="margin:10px 0 0">Studio dibuat otomatis saat booth pertama terhubung. Tambah manual hanya untuk menyiapkan catatan atau masa simpan lebih dulu. Kalau namanya sama dengan studio lain, keduanya digabung.</p>
+@@ -211,6 +213,24 @@ Pilih <b>folder tanggal</b> (mis. <code>2026-10-23</code>) untuk mengunggah bany
+ </div><p class="muted" id="f_hint">R2: buat bucket PRIVATE + API token "Object Read & Write". Endpoint ada di halaman R2 (S3 API). Region: auto.</p><p style="margin:14px 0 0"><button class="btn" onclick="saveB()">Simpan bucket</button> <button class="btn s" onclick="hideF()">Batal</button> <span id="fmsg"></span></p></div>
+  <div class="card"><h2>Daftar bucket</h2><div class="tw"><table id="bt"></table></div></div>
+ </section>
++<section class="page" id="pg-klien">
++ <h1>Klien</h1><p class="lead">Klien = pelanggan Anda. Tiap klien punya banyak studio, dan akun milik klien hanya bisa melihat studionya sendiri. Klien dinonaktifkan = semua booth dan akunnya langsung berhenti.</p>
++ <div class="srow"><span class="schip" id="k_cnt">–</span><span class="grow"></span><button class="btn" type="button" onclick="openK()">+ Tambah klien</button></div>
++ <div class="card"><div class="tw"><table id="k_t"></table></div><p class="muted" id="k_info" style="margin:10px 0 0"></p></div>
++</section>
++<dialog id="k_dlg"><h2 id="k_dt">Tambah klien</h2>
++ <label for="k_nm">Nama klien</label><input id="k_nm" maxlength="60" placeholder="mis. PT Foto Ceria">
++ <label for="k_note" style="margin-top:12px">Catatan</label><input id="k_note" maxlength="200" placeholder="mis. kontak, kota">
++ <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:600"><input type="checkbox" id="k_act" checked> Aktif (booth &amp; akun boleh dipakai)</label>
++ <p style="margin:14px 0 0"><button class="btn" type="button" onclick="saveK()">Simpan</button> <button class="btn s" type="button" onclick="$('k_dlg').close()">Batal</button> <span id="k_msg"></span></p>
++</dialog>
++<dialog id="t_dlg"><h2 id="t_dt">Token booth</h2>
++ <p class="muted" style="margin:0 0 10px">Satu token per booth. Token asli hanya tampil sekali saat dibuat; yang tersimpan hanya hash-nya. Cabut token = booth itu langsung ditolak.</p>
++ <div id="t_new" hidden style="background:#FFF7DB;border:1px solid #E8D58A;border-radius:10px;padding:10px;margin-bottom:12px"><b>Token baru — salin sekarang, tidak akan tampil lagi:</b><div style="display:flex;gap:8px;margin-top:6px"><input id="t_val" readonly style="font-family:monospace"><button class="btn sm" type="button" onclick="copyTok()">Salin</button></div></div>
++ <div class="tw"><table id="t_t"></table></div>
++ <div style="display:flex;gap:8px;margin-top:12px"><input id="t_lbl" maxlength="60" placeholder="Label booth, mis. Booth lobi"><button class="btn" type="button" onclick="newTok()">Buat token</button></div>
++ <p style="margin:14px 0 0"><button class="btn s" type="button" onclick="$('t_dlg').close()">Tutup</button> <span id="t_msg"></span></p>
++</dialog>
+ <section class="page" id="pg-pengguna">
+  <h1>Pengguna</h1><p class="lead">Buat akun untuk tim dan atur apa saja yang boleh dilakukan tiap orang. Akun admin punya akses penuh. Perubahan hak langsung berlaku tanpa login ulang.</p>
+  <div class="srow"><span class="schip" id="m_cnt">–</span><span class="grow"></span><button class="btn" type="button" onclick="openM()">+ Tambah pengguna</button></div>
+@@ -220,7 +240,8 @@ Pilih <b>folder tanggal</b> (mis. <code>2026-10-23</code>) untuk mengunggah bany
+  <label for="m_un">Username</label><input id="m_un" maxlength="30" autocomplete="off" placeholder="mis. rina">
+  <label for="m_nm" style="margin-top:12px">Nama</label><input id="m_nm" maxlength="60" placeholder="mis. Rina (CS)">
+  <label for="m_pw" style="margin-top:12px" id="m_pwl">Kata sandi</label><input id="m_pw" type="password" autocomplete="new-password" placeholder="minimal 8 karakter">
+- <label for="m_role" style="margin-top:12px">Peran</label><select id="m_role" onchange="mRole()"><option value="staff">Staf (pilih hak akses)</option><option value="admin">Admin (akses penuh, kelola pengguna)</option></select>
++ <label for="m_ten" style="margin-top:12px">Klien</label><select id="m_ten" onchange="mTen()"></select>
++ <label for="m_role" style="margin-top:12px" id="m_rolel">Peran</label><select id="m_role" onchange="mRole()"><option value="staff">Staf (pilih hak akses)</option><option value="admin">Admin (akses penuh, kelola pengguna)</option></select>
+  <div id="m_pbox"><label for="m_preset" style="margin-top:12px">Isi cepat dari paket</label><select id="m_preset" onchange="mPreset()"></select>
+   <div id="m_perms" style="margin-top:10px"></div></div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:600"><input type="checkbox" id="m_act"> Akun aktif (boleh masuk)</label>
+@@ -455,7 +476,9 @@ async function runDiag(){const btn=$('dg_btn');btn.disabled=true;btn.textContent
+  S.now=r.at;$('dg_at').textContent='Dicek '+new Date(r.at).toLocaleTimeString('id-ID');load()}
+ 
+ // ---- Kelola studio ----
+-let S={rows:[],editKey:null,t:null,now:0};
++let S={rows:[],editKey:null,t:null,now:0};let K={rows:[]};
++async function ensureK(){if(!ME.admin)return;const r=await api('/admin/api/tenants');if(r&&r.tenants){K.rows=r.tenants;K.unassigned=r.unassigned||0}}
++const fillTen=(id,val)=>{$(id).innerHTML='<option value="">— Tanpa klien (hanya super admin) —</option>'+K.rows.map(t=>`<option value="${t.id}"${t.active?'':' disabled'}>${he(t.name)}${t.active?'':' (nonaktif)'}</option>`).join('');$(id).value=val?String(val):''};
+ const EV={ping:'cek koneksi',sessions:'daftar sesi',upload:'unggah file',delete:'hapus sesi'};
+ const ST={online:'Online',recent:'Baru saja',offline:'Offline',never:'Belum terhubung',blocked:'Terputus'};
+ const ago=t=>{if(!t)return'belum pernah';const d=Math.max(0,Math.round((S.now-t)/1000));return d<45?'baru saja':d<3600?Math.round(d/60)+' menit lalu':d<86400?Math.round(d/3600)+' jam lalu':Math.round(d/86400)+' hari lalu'};
+@@ -464,20 +487,21 @@ async function loadS(){const r=await api('/admin/api/studios');if(!r||!r.studios
+ function drawS(){
+  $('s_t').innerHTML=S.rows.length?'<tr><th>Status</th><th>Studio</th><th>Link & file</th><th>Terakhir terlihat</th><th>Sinkron booth</th><th>Unggahan terakhir</th><th></th></tr>'+S.rows.map(x=>`<tr class="${x.blocked?'blk':''}">
+   <td><span class="dot ${x.status}">${ST[x.status]}</span></td>
+-  <td><b>${he(x.name)}</b>${x.note?`<div class="muted">${he(x.note)}</div>`:''}${x.retentionDays?`<div class="muted">Masa simpan ${x.retentionDays} hari</div>`:''}</td>
++  <td><b>${he(x.name)}</b>${x.tenantName?`<div class="muted">Klien: ${he(x.tenantName)}</div>`:(ME.admin?'<div class="muted" style="color:#B26A00">Belum dibagikan ke klien</div>':'')}${x.note?`<div class="muted">${he(x.note)}</div>`:''}${x.retentionDays?`<div class="muted">Masa simpan ${x.retentionDays} hari</div>`:''}</td>
+   <td>${x.sessions} link<div class="muted">${x.files} file · ${fmtBytes(x.bytes)}${x.pending?` · ${x.pending} menunggu`:''}</div></td>
+   <td title="${x.lastSeenAt?he(new Date(x.lastSeenAt).toLocaleString('id-ID')):''}">${ago(x.lastSeenAt)}${x.lastEvent?`<div class="muted">${EV[x.lastEvent]||he(x.lastEvent)}${x.lastIp?' · '+he(x.lastIp):''}</div>`:''}</td>
+   <td>${syncCell(x)}</td>
+   <td>${x.lastUploadAt?ago(x.lastUploadAt):'<span class="muted">–</span>'}</td>
+   <td><div class="acts">${can('link.view')?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="seeS(this.dataset.k)">Lihat link</button>`:''}
++   ${ME.admin?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="openT(this.dataset.k)">Token booth</button>`:''}
+    ${can('studio.edit')?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="openS(this.dataset.k)">Edit</button>
+    ${x.blocked?`<button class="btn sm" type="button" data-k="${he(x.key)}" onclick="blockS(this.dataset.k,false)">Sambungkan</button>`:`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="blockS(this.dataset.k,true)">Putuskan</button>`}
+    <button class="btn sm d" type="button" data-k="${he(x.key)}" onclick="delS(this.dataset.k)">Hapus</button>`:''}</div></td></tr>`).join(''):'<tr><td class="muted" style="padding:18px 8px">Belum ada studio. Studio muncul otomatis begitu booth pertama terhubung ke galeri.</td></tr>';
+  $('s_info').textContent=S.rows.length?'Online = menghubungi galeri dalam 5 menit terakhir. Booth menghubungi galeri tiap ±1 menit selama aplikasinya menyala dan galeri diaktifkan.':''}
+ const sRow=k=>S.rows.find(x=>x.key===k);
+-function openS(k){const x=k?sRow(k):null;S.editKey=x?x.key:null;$('s_dt').textContent=x?'Edit studio':'Tambah studio';$('s_nm').value=x?x.name:'';$('s_note').value=x?x.note:'';$('s_ret').value=x&&x.retentionDays?x.retentionDays:'';$('s_msg').textContent='';
++async function openS(k){await ensureK();const x=k?sRow(k):null;fillTen('s_ten',x?x.tenantId:'');S.editKey=x?x.key:null;$('s_dt').textContent=x?'Edit studio':'Tambah studio';$('s_nm').value=x?x.name:'';$('s_note').value=x?x.note:'';$('s_ret').value=x&&x.retentionDays?x.retentionDays:'';$('s_msg').textContent='';
+  $('s_nmh').textContent=x?'Mengubah nama ikut mengubah semua link studio ini. Nama yang sama dengan studio lain akan menggabungkan keduanya.':'';$('s_dlg').showModal()}
+-async function saveS(){const body={note:$('s_note').value.trim(),retentionDays:$('s_ret').value.trim()===''?null:Number($('s_ret').value)},nm=$('s_nm').value.trim();
++async function saveS(){const body={note:$('s_note').value.trim(),...(ME.admin?{tenantId:$('s_ten').value?Number($('s_ten').value):null}:{}),retentionDays:$('s_ret').value.trim()===''?null:Number($('s_ret').value)},nm=$('s_nm').value.trim();
+  if(!nm){$('s_msg').textContent='Nama studio wajib diisi';$('s_msg').className='bad';return}
+  let r;
+  if(S.editKey){const x=sRow(S.editKey);if(nm!==x.name){const other=S.rows.find(y=>y.key!==x.key&&y.name.toLowerCase()===nm.toLowerCase());if(other&&!await ask('Gabungkan dengan “'+other.name+'”?','Semua link “'+x.name+'” dipindah ke “'+other.name+'”. Tindakan ini tidak bisa dibatalkan.',{ok:'Ya, gabungkan',danger:false}))return;body.name=nm}
+@@ -528,11 +552,11 @@ setInterval(liveTick,LIVE_MS);document.addEventListener('visibilitychange',()=>{
+ // ---- pengguna & hak akses ----
+ const ROLE_TXT=r=>r==='admin'?'Admin':'Staf';let MU={rows:[],edit:null};
+ const fmtLast=t=>t?new Date(t).toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'Belum pernah';
+-async function loadM(){const r=await api('/admin/api/users');if(!r||!r.users)return;MU.rows=r.users;
++async function loadM(){await ensureK();MU.tp=null;const r=await api('/admin/api/users');if(r&&r.tenantPerms)MU.tp=r.tenantPerms;if(!r||!r.users)return;MU.rows=r.users;
+  $('m_cnt').textContent=r.users.length+' pengguna + admin utama';
+  $('m_t').innerHTML='<tr><th>Pengguna</th><th>Peran / hak akses</th><th>Terakhir masuk</th><th>Status</th><th></th></tr>'+
+   `<tr><td><b>${he(r.envUser)}</b><div class="muted">admin utama (dari file .env)</div></td><td>Admin · akses penuh</td><td class="muted">–</td><td><span class="pill ok">Aktif</span></td><td class="muted">Tidak bisa diubah di sini</td></tr>`+
+-  r.users.map(u=>`<tr><td><b>${he(u.name)}</b><div class="muted">${he(u.username)}</div></td><td>${u.role==='admin'?'Admin · akses penuh':'Staf · '+(u.perms.length?u.perms.map(k=>he(ME.catalog[k]||k)).join(', '):'<span class="bad">tanpa hak</span>')}</td><td>${fmtLast(u.lastLoginAt)}</td><td>${u.active?'<span class="pill ok">Aktif</span>':'<span class="pill bad">Nonaktif</span>'}</td><td><div class="acts"><button class="btn sm s" type="button" data-id="${u.id}" onclick="openM(+this.dataset.id)">Edit</button> <button class="btn sm d" type="button" data-id="${u.id}" onclick="delM(+this.dataset.id)">Hapus</button></div></td></tr>`).join('');
++  r.users.map(u=>`<tr><td><b>${he(u.name)}</b><div class="muted">${he(u.username)}</div></td><td>${u.tenantName?'<b>'+he(u.tenantName)+'</b> · ':''}${u.role==='admin'?'Admin · akses penuh':'Staf · '+(u.perms.length?u.perms.map(k=>he(ME.catalog[k]||k)).join(', '):'<span class="bad">tanpa hak</span>')}</td><td>${fmtLast(u.lastLoginAt)}</td><td>${u.active?'<span class="pill ok">Aktif</span>':'<span class="pill bad">Nonaktif</span>'}</td><td><div class="acts"><button class="btn sm s" type="button" data-id="${u.id}" onclick="openM(+this.dataset.id)">Edit</button> <button class="btn sm d" type="button" data-id="${u.id}" onclick="delM(+this.dataset.id)">Hapus</button></div></td></tr>`).join('');
+  $('m_info').textContent=''}
+ function mBuild(){const box=$('m_perms');if(box.dataset.done)return;box.dataset.done=1;
+  box.innerHTML=Object.entries(ME.catalog).map(([k,t])=>`<label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:6px 0"><input type="checkbox" data-perm="${k}" onchange="mDeps(this)"> ${he(t)}</label>`).join('');
+@@ -542,11 +566,13 @@ function mDeps(c){const imp={'studio.edit':'studio.view','link.edit':'link.view'
+  if(c.checked&&imp[c.dataset.perm])document.querySelector(`#m_perms input[data-perm="${imp[c.dataset.perm]}"]`).checked=true;
+  if(!c.checked)document.querySelectorAll('#m_perms input').forEach(o=>{if(imp[o.dataset.perm]===c.dataset.perm)o.checked=false})}
+ function mPreset(){const p=ME.presets.find(x=>x.id===$('m_preset').value);if(p)mSet(p.perms)}
++function mTen(){const t=!!$('m_ten').value;if(t)$('m_role').value='staff';$('m_role').hidden=t;$('m_rolel').hidden=t;mRole();
++ document.querySelectorAll('#m_perms input').forEach(c=>{const ok=!t||(MU.tp||[]).includes(c.dataset.perm);c.disabled=!ok;if(!ok)c.checked=false;c.parentElement.style.opacity=ok?1:.4})}
+ function mRole(){$('m_pbox').hidden=$('m_role').value==='admin'}
+-function openM(id){mBuild();const u=id?MU.rows.find(x=>x.id===id):null;MU.edit=u?u.id:null;$('m_dt').textContent=u?'Edit pengguna':'Tambah pengguna';
++async function openM(id){mBuild();await ensureK();const u=id?MU.rows.find(x=>x.id===id):null;fillTen('m_ten',u?u.tenantId:'');MU.edit=u?u.id:null;$('m_dt').textContent=u?'Edit pengguna':'Tambah pengguna';
+  $('m_un').value=u?u.username:'';$('m_un').disabled=!!u;$('m_nm').value=u?u.name:'';$('m_pw').value='';$('m_pwl').textContent=u?'Kata sandi baru (kosongkan jika tidak diubah)':'Kata sandi';
+- $('m_role').value=u?u.role:'staff';$('m_act').checked=u?u.active:true;mSet(u?u.perms:[]);$('m_preset').value='';mRole();$('m_msg').textContent='';$('m_dlg').showModal()}
+-async function saveM(){const body={name:$('m_nm').value.trim(),role:$('m_role').value,active:$('m_act').checked,perms:[...document.querySelectorAll('#m_perms input:checked')].map(c=>c.dataset.perm)};
++ $('m_role').value=u?u.role:'staff';$('m_act').checked=u?u.active:true;mSet(u?u.perms:[]);$('m_preset').value='';mRole();mTen();$('m_msg').textContent='';$('m_dlg').showModal()}
++async function saveM(){const body={tenantId:$('m_ten').value?Number($('m_ten').value):null,name:$('m_nm').value.trim(),role:$('m_role').value,active:$('m_act').checked,perms:[...document.querySelectorAll('#m_perms input:checked')].map(c=>c.dataset.perm)};
+  if($('m_pw').value)body.password=$('m_pw').value;let r;
+  if(MU.edit)r=await api('/admin/api/users/'+MU.edit,{method:'POST',body:JSON.stringify(body)});
+  else{body.username=$('m_un').value.trim();r=await api('/admin/api/users',{method:'POST',body:JSON.stringify(body)})}
+@@ -556,16 +582,38 @@ async function delM(id){const u=MU.rows.find(x=>x.id===id);if(!u||!await ask('Ha
+ function openPw(){$('pw_cur').value='';$('pw_new').value='';$('pw_msg').textContent='';$('pw_dlg').showModal()}
+ async function savePw(){const r=await api('/admin/api/me/password',{method:'POST',body:JSON.stringify({current:$('pw_cur').value,password:$('pw_new').value})});
+  if(r.ok){$('pw_dlg').close();toast('Kata sandi diganti.')}else{$('pw_msg').textContent=r.error||'Gagal';$('pw_msg').className='bad'}}
++
++// ---- Klien ----
++async function loadK(){await ensureK();$('k_cnt').textContent=K.rows.length+' klien'+(K.unassigned?' · '+K.unassigned+' studio belum dibagikan':'');
++ $('k_t').innerHTML=K.rows.length?'<tr><th>Klien</th><th>Studio</th><th>Akun</th><th>Status</th><th></th></tr>'+K.rows.map(t=>`<tr><td><b>${he(t.name)}</b>${t.note?`<div class="muted">${he(t.note)}</div>`:''}</td><td>${t.studios}</td><td>${t.users}</td><td>${t.active?'<span class="pill ok">Aktif</span>':'<span class="pill bad">Nonaktif</span>'}</td><td><div class="acts"><button class="btn sm s" type="button" data-id="${t.id}" onclick="openK(+this.dataset.id)">Edit</button> <button class="btn sm d" type="button" data-id="${t.id}" onclick="delK(+this.dataset.id)">Hapus</button></div></td></tr>`).join(''):'<tr><td class="muted" style="padding:18px 8px">Belum ada klien. Tambah klien, lalu pindahkan studio ke klien itu dan buat akun untuknya.</td></tr>';
++ $('k_info').textContent=''}
++function openK(id){const t=id?K.rows.find(x=>x.id===id):null;K.edit=t?t.id:null;$('k_dt').textContent=t?'Edit klien':'Tambah klien';$('k_nm').value=t?t.name:'';$('k_note').value=t?t.note:'';$('k_act').checked=t?t.active:true;$('k_msg').textContent='';$('k_dlg').showModal()}
++async function saveK(){const body={name:$('k_nm').value.trim(),note:$('k_note').value.trim(),active:$('k_act').checked};
++ if(!body.name){$('k_msg').textContent='Nama klien wajib diisi';$('k_msg').className='bad';return}
++ const r=K.edit?await api('/admin/api/tenants/'+K.edit,{method:'POST',body:JSON.stringify(body)}):await api('/admin/api/tenants',{method:'POST',body:JSON.stringify(body)});
++ if(r.ok){$('k_dlg').close();toast('Klien tersimpan.');loadK()}else{$('k_msg').textContent=r.error||'Gagal menyimpan';$('k_msg').className='bad'}}
++async function delK(id){const t=K.rows.find(x=>x.id===id);if(!t||!await ask('Hapus klien “'+t.name+'”?','Hanya bisa kalau klien ini tidak punya studio dan akun lagi.'))return;
++ const r=await api('/admin/api/tenants/'+id,{method:'DELETE'});if(r.ok){toast('Klien dihapus.');loadK()}else toast(r.error||'Gagal',1)}
++// ---- Token booth ----
++async function openT(k){T.key=k;const x=sRow(k);$('t_dt').textContent='Token booth — '+(x?x.name:k);$('t_new').hidden=true;$('t_lbl').value='';$('t_msg').textContent='';await drawT();$('t_dlg').showModal()}
++const T={key:null};
++async function drawT(){const r=await api('/admin/api/studios/'+encodeURIComponent(T.key)+'/tokens');const l=(r&&r.tokens)||[];
++ $('t_t').innerHTML=l.length?'<tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th></th></tr>'+l.map(t=>`<tr><td>${he(t.label||'–')}</td><td>${fmtLast(t.createdAt)}</td><td>${t.lastUsedAt?ago(t.lastUsedAt):'<span class="muted">belum</span>'}</td><td>${t.revokedAt?'<span class="pill bad">Dicabut</span>':`<button class="btn sm d" type="button" data-id="${t.id}" onclick="revokeTok(+this.dataset.id)">Cabut</button>`}</td></tr>`).join(''):'<tr><td class="muted" style="padding:12px 8px">Belum ada token. Buat satu untuk booth ini.</td></tr>'}
++async function newTok(){const r=await api('/admin/api/studios/'+encodeURIComponent(T.key)+'/tokens',{method:'POST',body:JSON.stringify({label:$('t_lbl').value.trim()})});
++ if(r.ok){$('t_val').value=r.token;$('t_new').hidden=false;$('t_lbl').value='';$('t_msg').textContent='';drawT()}else{$('t_msg').textContent=r.error||'Gagal';$('t_msg').className='bad'}}
++async function copyTok(){try{await navigator.clipboard.writeText($('t_val').value);toast('Token disalin.')}catch{$('t_val').select();toast('Tekan Ctrl+C untuk menyalin.')}}
++async function revokeTok(id){if(!await ask('Cabut token ini?','Booth yang memakai token ini langsung ditolak sampai diberi token baru.',{ok:'Ya, cabut'}))return;
++ const r=await api('/admin/api/studios/'+encodeURIComponent(T.key)+'/tokens/'+id,{method:'DELETE'});if(r.ok){toast('Token dicabut.');drawT()}else toast(r.error||'Gagal',1)}
+ function applyMe(){document.querySelectorAll('[data-need]').forEach(el=>{const n=el.dataset.need;el.classList.toggle('noperm',!(n==='@admin'?ME.admin:can(n)))});
+- $('who').textContent=(ME.name||ME.username)+' · '+(ME.admin?'admin':'staf');$('pwbtn').classList.toggle('noperm',!!ME.env)}
++ $('who').textContent=(ME.name||ME.username)+' · '+(ME.admin?'admin':ME.tenantName?'klien '+ME.tenantName:'staf');$('pwbtn').classList.toggle('noperm',!!ME.env)}
+ // ---- menu samping (hash: #ringkasan, #studio, #link, #penyimpanan, #pengaturan) ----
+-const PAGES=['ringkasan','studio','link','penyimpanan','pengaturan','pengguna'];
++const PAGES=['ringkasan','studio','klien','link','penyimpanan','pengaturan','pengguna'];
+ const pageOk=p=>{const a=document.querySelector(`#nav a[data-p="${p}"]`);return !!a&&!a.classList.contains('noperm')};
+ if((location.hash||'')==='#unggah')history.replaceState(null,'','#link'),window.__openU=1; // alamat lama
+ function nav(){const id=PAGES.includes((location.hash||'').slice(1))&&pageOk(location.hash.slice(1))?location.hash.slice(1):'ringkasan';
+  PAGES.forEach(p=>{$('pg-'+p).className='page'+(p===id?' on':'')});
+  document.querySelectorAll('#nav a').forEach(a=>{const on=a.dataset.p===id;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+- document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
++ document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='klien')loadK();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
+ window.addEventListener('hashchange',nav);
+ window.addEventListener('hashchange',()=>{if(location.hash==='#unggah'){history.replaceState(null,'','#link');nav();if(can('upload'))showU()}});
+ $('ham').addEventListener('click',()=>document.body.classList.toggle('open'));$('scrim').addEventListener('click',()=>document.body.classList.remove('open'));
+diff --git a/src/auth.js b/src/auth.js
+index 189b4c8..22421fe 100644
+--- a/src/auth.js
++++ b/src/auth.js
+@@ -1,6 +1,7 @@
+ // Token studio = token yang sama dengan yang dipakai booth untuk sinkron ke kasir. Diverifikasi ke kasir (GET /api/photobox/ping),
+ // hasilnya di-cache supaya tidak membebani kasir. Cadangan: STUDIO_TOKENS="token:Nama Studio,token2:Studio 2" (tanpa kasir / untuk uji).
+ const crypto = require("crypto");
++const { db } = require("./db");
+ const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
+ const cache = new Map(); // sha(token) -> { ok, studio, at }
+ const OK_TTL = 10 * 60 * 1000, BAD_TTL = 30 * 1000;
+@@ -14,9 +15,17 @@ function staticTokens() {
+   return m;
+ }
+ 
++/** Token yang diterbitkan platform ("pst_..."): dicari lewat hash, harus belum dicabut. */
++function platformToken(token) {
++  const row = db.prepare("SELECT bt.id, bt.skey, st.name, st.tenant_id FROM booth_tokens bt JOIN studios st ON st.skey = bt.skey WHERE bt.token_hash = ? AND bt.revoked_at IS NULL").get(sha(token));
++  return row ? { studio: row.name, skey: row.skey, tokenId: row.id, tenantId: row.tenant_id || null } : null;
++}
++const newToken = () => "pst_" + crypto.randomBytes(32).toString("base64url");
++
+ async function verify(token) {
+   token = String(token || "");
+   if (token.length < 16 || token.length > 200) return null;
++  if (token.startsWith("pst_")) return platformToken(token); // token platform: tidak ada jalur lain (cabut = langsung mati)
+   const st = staticTokens();
+   if (st.has(token)) return { studio: st.get(token) };
+   const base = String(process.env.KASIR_URL || "").trim().replace(/\/+$/, "").replace(/\/api\/photobox$/i, "");
+@@ -49,4 +58,4 @@ async function checkKasir() {
+   } catch (e) { return { configured: true, ok: false, ms: Date.now() - t0, url: base, error: e.name === "AbortError" ? "Kasir tidak menjawab (timeout)" : `Kasir tidak terjangkau: ${e.cause?.code || e.message}` }; }
+ }
+ 
+-module.exports = { verify, checkKasir };
++module.exports = { verify, checkKasir, newToken, sha };
+diff --git a/src/db.js b/src/db.js
+index 59e1eca..156e069 100644
+--- a/src/db.js
++++ b/src/db.js
+@@ -93,6 +93,7 @@ for (const ddl of [
+   "ALTER TABLE buckets ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0",
+   "ALTER TABLE studios ADD COLUMN sync_json TEXT",                       // laporan sinkron dari booth (denyut)
+   "ALTER TABLE studios ADD COLUMN sync_at INTEGER",
++  "ALTER TABLE studios ADD COLUMN tenant_id INTEGER",                    // klien pemilik studio (NULL = belum dibagikan; hanya terlihat super admin)
+ ]) { try { db.exec(ddl); } catch { /* sudah ada */ } }
+ 
+ const getSetting = (k, def) => { const r = db.prepare("SELECT v FROM settings WHERE k = ?").get(k); return r ? r.v : def; };
+@@ -105,4 +106,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS users (
+   pass_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'staff', perms TEXT NOT NULL DEFAULT '[]',
+   active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, last_login_at INTEGER)`);
+ 
++// ---- Platform multi-klien ----
++// Klien (tenant) = pelanggan Anda; punya banyak studio. Akun dengan tenant_id hanya bisa melihat & mengelola studio klien itu.
++db.exec(`CREATE TABLE IF NOT EXISTS tenants (
++  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, note TEXT NOT NULL DEFAULT '',
++  active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
++-- Token booth diterbitkan platform: satu per booth, hanya hash yang disimpan, bisa dicabut satu per satu.
++CREATE TABLE IF NOT EXISTS booth_tokens (
++  id INTEGER PRIMARY KEY AUTOINCREMENT, skey TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, label TEXT NOT NULL DEFAULT '',
++  created_at INTEGER NOT NULL, last_used_at INTEGER, revoked_at INTEGER);
++CREATE INDEX IF NOT EXISTS idx_booth_tokens_skey ON booth_tokens(skey);`);
++try { db.exec("ALTER TABLE users ADD COLUMN tenant_id INTEGER"); } catch { /* sudah ada */ }
++try { db.exec("CREATE INDEX IF NOT EXISTS idx_studios_tenant ON studios(tenant_id)"); } catch { /* abaikan */ }
++
+ module.exports = { db, getSetting, setSetting, retentionDays, DATA_DIR };
+diff --git a/src/server.js b/src/server.js
+index 6af9dbd..358c6b3 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -93,6 +93,7 @@ function renameStudio(oldKey, newName, { lock = false } = {}) {
+   if (!row || !name) return null;
+   const nk = skey(name);
+   const target = nk !== oldKey ? db.prepare("SELECT * FROM studios WHERE skey = ?").get(nk) : null;
++  if (target && (target.tenant_id || null) !== (row.tenant_id || null)) return { error: "Nama itu dipakai studio milik klien lain." };
+   if (target) { // gabung
+     db.prepare("UPDATE sessions SET studio = ? WHERE lower(trim(studio)) = ?").run(target.name, oldKey);
+     db.prepare("UPDATE studios SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?), first_seen_at = MIN(COALESCE(first_seen_at, ?), ?), note = CASE WHEN note = '' THEN ? ELSE note END, blocked = MAX(blocked, ?) WHERE skey = ?")
+@@ -112,6 +113,12 @@ function ensureStudio(name) {
+ }
+ /** Dipanggil tiap booth menghubungi galeri: catat 'terlihat', ikuti nama dari kasir. Mengembalikan baris studio. */
+ function touchStudio(a, req, event) {
++  if (a.skey) { // token platform: studio sudah pasti dari tabel booth_tokens (tidak ada penggantian nama otomatis)
++    const t = now();
++    db.prepare("UPDATE studios SET first_seen_at = COALESCE(first_seen_at, ?), last_seen_at = ?, last_ip = ?, last_event = ? WHERE skey = ?").run(t, t, String(req.headers["x-real-ip"] || req.ip || "").slice(0, 64), event, a.skey);
++    db.prepare("UPDATE booth_tokens SET last_used_at = ? WHERE id = ?").run(t, a.tokenId);
++    return db.prepare("SELECT * FROM studios WHERE skey = ?").get(a.skey);
++  }
+   const th = crypto.createHash("sha256").update(bearerOf(req)).digest("hex"), k = skey(a.studio), t = now();
+   let row = db.prepare("SELECT * FROM studios WHERE token_hash = ?").get(th);
+   if (row && row.skey !== k && !row.name_locked) { const r = renameStudio(row.skey, a.studio); row = r ? r.row : row; } // nama di kasir diganti -> ikut
+@@ -123,7 +130,8 @@ function touchStudio(a, req, event) {
+ /** Catat + tolak bila studio diputus admin. null = sudah dibalas 403. */
+ function studioGuard(a, req, res, event) {
+   const row = touchStudio(a, req, event);
+-  if (row.blocked) { res.status(403).json({ error: "Studio ini diputus dari galeri oleh admin. Hubungi admin.", blocked: true }); return null; }
++  const ten = row.tenant_id ? db.prepare("SELECT active FROM tenants WHERE id = ?").get(row.tenant_id) : null;
++  if (row.blocked || (ten && !ten.active)) { res.status(403).json({ error: "Studio ini diputus dari galeri oleh admin. Hubungi admin.", blocked: true }); return null; }
+   return row;
+ }
+ 
+@@ -443,8 +451,16 @@ const normPerms = (list) => { const set = new Set((Array.isArray(list) ? list :
+ const parsePerms = (raw) => { try { const v = JSON.parse(raw || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }; // data hak akses rusak = tanpa hak (jangan sampai menjatuhkan daftar pengguna)
+ const hashPw = (pw) => { const salt = crypto.randomBytes(16); return `s1$${salt.toString("base64url")}$${crypto.scryptSync(String(pw), salt, 32).toString("base64url")}`; };
+ const checkPw = (pw, stored) => { const [v, sl, h] = String(stored || "").split("$"); if (v !== "s1" || !sl || !h) return false; return sameSig(crypto.scryptSync(String(pw), Buffer.from(sl, "base64url"), 32).toString("base64url"), h); };
+-const envAdmin = () => ({ id: 0, username: process.env.ADMIN_USER || "admin", name: "Admin", admin: true, env: true, perms: new Set(Object.keys(PERMS)) });
+-const principalOf = (row) => { const admin = row.role === "admin"; const list = parsePerms(row.perms); return { id: row.id, username: row.username, name: row.name || row.username, admin, env: false, perms: new Set(admin ? Object.keys(PERMS) : normPerms(list)) }; };
++// Hak yang boleh dimiliki akun klien (tenant): hanya melihat studio & link miliknya. Tidak pernah: penyimpanan, pengaturan umum, pengguna, token booth.
++const TENANT_PERMS = new Set(["studio.view", "link.view", "link.edit", "upload"]);
++const envAdmin = () => ({ id: 0, username: process.env.ADMIN_USER || "admin", name: "Admin", admin: true, env: true, tenantId: null, perms: new Set(Object.keys(PERMS)) });
++const principalOf = (row) => {
++  const tenantId = row.tenant_id || null, admin = row.role === "admin" && !tenantId; // akun klien tidak pernah admin penuh
++  let perms = new Set(admin ? Object.keys(PERMS) : normPerms(parsePerms(row.perms)));
++  if (tenantId) perms = new Set([...perms].filter((x) => TENANT_PERMS.has(x)));
++  return { id: row.id, username: row.username, name: row.name || row.username, admin, env: false, tenantId, perms };
++};
++const tenantActive = (id) => { const t = db.prepare("SELECT active FROM tenants WHERE id = ?").get(id); return !!t && !!t.active; };
+ const userSig = (row, exp) => sigOf(`u${row.id}~${exp}~${String(row.pass_hash).slice(-16)}`); // ganti sandi / nonaktif = sesi lama otomatis mati
+ const userCookie = (row, req) => { const exp = Date.now() + SESSION_MS; return `${COOKIE}=${row.id}~${exp}.${userSig(row, exp)}; Max-Age=${SESSION_MS / 1000}; ${cookieAttrs(req)}`; };
+ function sessionUser(req) {
+@@ -453,8 +469,14 @@ function sessionUser(req) {
+   if (!m || Number(m[2]) < Date.now()) return null;
+   if (!m[1]) return sameSig(sig, sessionSig(m[2])) ? envAdmin() : null;
+   const row = db.prepare("SELECT * FROM users WHERE id = ? AND active = 1").get(Number(m[1]));
++  if (row && row.tenant_id && !tenantActive(row.tenant_id)) return null; // klien dinonaktifkan = semua akunnya keluar
+   return row && sameSig(sig, userSig(row, m[2])) ? principalOf(row) : null;
+ }
++// ---- Pembatasan per klien: akun klien hanya melihat/mengubah studio (dan sesinya) milik klien itu ----
++const tid = (req) => req.user?.tenantId || null;
++const studioInScope = (req, name) => { const t = tid(req); if (!t) return true; const r = db.prepare("SELECT tenant_id FROM studios WHERE skey = ?").get(skey(name)); return !!r && r.tenant_id === t; };
++const sessionInScope = (req, token) => { if (!tid(req)) return true; const r = db.prepare("SELECT studio FROM sessions WHERE token = ?").get(token); return !!r && studioInScope(req, r.studio); };
++const inTenant = "lower(trim(s.studio)) IN (SELECT skey FROM studios WHERE tenant_id = ?)"; // dipakai di query sesi (alias s)
+ const can = (req, perm) => !!req.user && (req.user.admin || req.user.perms.has(perm));
+ const need = (perm) => (req, res, next) => can(req, perm) ? next() : res.status(403).json({ error: "Akunmu tidak punya hak untuk tindakan ini." });
+ const needAdmin = (req, res, next) => req.user?.admin ? next() : res.status(403).json({ error: "Hanya admin yang boleh mengelola pengguna." });
+@@ -509,6 +531,7 @@ app.post("/admin/api/upload/prepare", adminAuth, need("upload"), (req, res) => {
+   const b = req.body || {};
+   const studio = String(b.studio || "").trim().slice(0, 60);
+   if (!studio) return res.status(400).json({ error: "Nama studio wajib diisi." });
++  if (tid(req) && !studioInScope(req, studio)) return res.status(403).json({ error: "Studio itu bukan milik klienmu." }); // akun klien tidak boleh membuat studio baru
+   const r = registerSession(ensureStudio(studio).name, { token: b.token, mode: b.mode, studioCode: b.studioCode, files: b.files, retry: b.retry, manual: true, social: b.social, txNo: b.txNo });
+   if (r.error) return res.status(r.status).json({ error: r.error });
+   res.json({ ...r.body, uploads: r.body.uploads.map((u) => ({ fid: u.fid, path: `/admin/api/upload/${r.body.token}/${safe(u.fid, 30)}`, contentType: u.contentType })) });
+@@ -517,7 +540,7 @@ app.post("/admin/api/upload/prepare", adminAuth, need("upload"), (req, res) => {
+ app.put("/admin/api/upload/:token/:fid", adminAuth, need("upload"), async (req, res) => {
+   try {
+     const row = db.prepare("SELECT * FROM files WHERE token = ? AND fid = ?").get(normToken(req.params.token), safe(req.params.fid, 30));
+-    if (!row) return res.status(404).json({ error: "File belum didaftarkan (prepare)." });
++    if (!row || !sessionInScope(req, row.token)) return res.status(404).json({ error: "File belum didaftarkan (prepare)." });
+     const b = bucketById(row.bucket_id); const len = Number(req.headers["content-length"]) || 0;
+     if (!b || !len || len > MAX_FILE) return res.status(400).json({ error: "Ukuran file tidak valid." });
+     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 15 * 60 * 1000);
+@@ -533,22 +556,27 @@ app.put("/admin/api/upload/:token/:fid", adminAuth, need("upload"), async (req,
+ const maskB = (b, used) => ({ id: b.id, name: b.name, endpoint: b.endpoint, region: b.region, bucket: b.bucket, accessKey: b.access_key, secretSet: !!b.secret_key, enabled: !!b.enabled, priority: b.priority, quotaGB: b.quota_bytes ? Math.round(b.quota_bytes / 1e7) / 100 : 0, usedGB: Math.round((used.get(b.id) || 0) / 1e7) / 100, health: b.health || "", healthMsg: b.health_msg || "", healthAt: b.health_at || null });
+ app.get("/admin", adminAuth, (_req, res) => res.type("html").send(fs.readFileSync(path.join(__dirname, "admin.html"), "utf8")));
+ app.get("/admin/api/state", adminAuth, (req, res) => {
+-  const used = usedBytes();
++  const used = usedBytes(), t = tid(req);
++  const sw = t ? `WHERE ${inTenant}` : "", fw = t ? `AND ${inTenant}` : "", a = t ? [t] : [];
+   res.json({
+     retentionDays: retentionDays(), zipEnabled: zipEnabled(), zipMode: zipMode(), publicUrl: PUBLIC_URL(),
+-    buckets: db.prepare("SELECT * FROM buckets ORDER BY priority, id").all().map((b) => { const m = maskB(b, used); return can(req, "storage.view") ? m : { ...m, endpoint: "", bucket: "", accessKey: "", region: "", healthMsg: "" }; }),
+-    stats: { sessions: db.prepare("SELECT COUNT(*) n FROM sessions").get().n, files: db.prepare("SELECT COUNT(*) n FROM files WHERE state = 'ok'").get().n, pending: db.prepare("SELECT COUNT(*) n FROM files WHERE state = 'pending'").get().n },
+-    studios: db.prepare("SELECT st.name studio, (SELECT MAX(s.studio_code) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) code, (SELECT COUNT(*) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) sessions, COALESCE(st.last_seen_at, 0) last FROM studios st ORDER BY last DESC, st.name").all(),
++    buckets: t ? [] : db.prepare("SELECT * FROM buckets ORDER BY priority, id").all().map((b) => { const m = maskB(b, used); return can(req, "storage.view") ? m : { ...m, endpoint: "", bucket: "", accessKey: "", region: "", healthMsg: "" }; }),
++    stats: {
++      sessions: db.prepare(`SELECT COUNT(*) n FROM sessions s ${sw}`).get(...a).n,
++      files: db.prepare(`SELECT COUNT(*) n FROM files f JOIN sessions s ON s.token = f.token WHERE f.state = 'ok' ${fw}`).get(...a).n,
++      pending: db.prepare(`SELECT COUNT(*) n FROM files f JOIN sessions s ON s.token = f.token WHERE f.state = 'pending' ${fw}`).get(...a).n,
++    },
++    studios: db.prepare(`SELECT st.name studio, (SELECT MAX(s.studio_code) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) code, (SELECT COUNT(*) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) sessions, COALESCE(st.last_seen_at, 0) last FROM studios st ${t ? "WHERE st.tenant_id = ?" : ""} ORDER BY last DESC, st.name`).all(...a),
+   });
+ });
+ // ---- Pengguna & hak akses (hanya admin) ----
+ app.get("/admin/api/me", adminAuth, (req, res) => {
+   const u = req.user;
+-  res.json({ username: u.username, name: u.name, admin: u.admin, env: u.env, perms: [...u.perms], catalog: PERMS, presets: PRESETS });
++  res.json({ username: u.username, name: u.name, admin: u.admin, env: u.env, tenantId: u.tenantId || null, tenantName: u.tenantId ? db.prepare("SELECT name FROM tenants WHERE id = ?").get(u.tenantId)?.name || "" : "", perms: [...u.perms], catalog: PERMS, presets: PRESETS });
+ });
+-const userRow = (r) => ({ id: r.id, username: r.username, name: r.name, role: r.role, perms: r.role === "admin" ? Object.keys(PERMS) : normPerms(parsePerms(r.perms)), active: !!r.active, createdAt: r.created_at, lastLoginAt: r.last_login_at });
++const userRow = (r) => ({ id: r.id, username: r.username, name: r.name, role: r.tenant_id ? "staff" : r.role, tenantId: r.tenant_id || null, tenantName: r.tenant_name || "", perms: r.tenant_id ? normPerms(parsePerms(r.perms)).filter((x) => TENANT_PERMS.has(x)) : r.role === "admin" ? Object.keys(PERMS) : normPerms(parsePerms(r.perms)), active: !!r.active, createdAt: r.created_at, lastLoginAt: r.last_login_at });
+ app.get("/admin/api/users", adminAuth, needAdmin, (_req, res) => {
+-  res.json({ envUser: process.env.ADMIN_USER || "admin", users: db.prepare("SELECT * FROM users ORDER BY id").all().map(userRow), catalog: PERMS, presets: PRESETS });
++  res.json({ envUser: process.env.ADMIN_USER || "admin", users: db.prepare("SELECT u.*, (SELECT name FROM tenants WHERE id = u.tenant_id) tenant_name FROM users u ORDER BY u.id").all().map(userRow), catalog: PERMS, presets: PRESETS, tenantPerms: [...TENANT_PERMS] });
+ });
+ const cleanName = (v) => String(v || "").replace(/[<>]/g, "").trim().slice(0, 60);
+ app.post("/admin/api/users", adminAuth, needAdmin, (req, res) => {
+@@ -557,19 +585,24 @@ app.post("/admin/api/users", adminAuth, needAdmin, (req, res) => {
+   if (username === String(process.env.ADMIN_USER || "admin").toLowerCase()) return res.status(409).json({ error: "Username itu dipakai akun admin utama (.env)." });
+   if (String(b.password || "").length < 8 || String(b.password).length > 200) return res.status(400).json({ error: "Kata sandi minimal 8 karakter." });
+   if (db.prepare("SELECT 1 FROM users WHERE username = ?").get(username)) return res.status(409).json({ error: "Username sudah dipakai." });
+-  const role = b.role === "admin" ? "admin" : "staff", perms = role === "admin" ? [] : normPerms(b.perms);
+-  const r = db.prepare("INSERT INTO users (username, name, pass_hash, role, perms, active, created_at) VALUES (?,?,?,?,?,?,?)").run(username, cleanName(b.name) || username, hashPw(b.password), role, JSON.stringify(perms), b.active === false ? 0 : 1, now());
++  const tenantId = b.tenantId ? Number(b.tenantId) : null;
++  if (tenantId && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(tenantId)) return res.status(400).json({ error: "Klien tidak ditemukan." });
++  const role = !tenantId && b.role === "admin" ? "admin" : "staff"; // akun klien selalu staf
++  let perms = role === "admin" ? [] : normPerms(b.perms); if (tenantId) perms = perms.filter((x) => TENANT_PERMS.has(x));
++  const r = db.prepare("INSERT INTO users (username, name, pass_hash, role, perms, active, created_at, tenant_id) VALUES (?,?,?,?,?,?,?,?)").run(username, cleanName(b.name) || username, hashPw(b.password), role, JSON.stringify(perms), b.active === false ? 0 : 1, now(), tenantId);
+   res.json({ ok: true, id: Number(r.lastInsertRowid) });
+ });
+ app.post("/admin/api/users/:id", adminAuth, needAdmin, (req, res) => {
+   const id = Number(req.params.id), row = db.prepare("SELECT * FROM users WHERE id = ?").get(id), b = req.body || {};
+   if (!row) return res.status(404).json({ error: "Pengguna tidak ditemukan." });
+-  const role = b.role == null ? row.role : b.role === "admin" ? "admin" : "staff", active = b.active == null ? row.active : b.active ? 1 : 0;
++  let tenantId = row.tenant_id || null;
++  if (b.tenantId !== undefined) { tenantId = b.tenantId ? Number(b.tenantId) : null; if (tenantId && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(tenantId)) return res.status(400).json({ error: "Klien tidak ditemukan." }); }
++  const role = tenantId ? "staff" : b.role == null ? row.role : b.role === "admin" ? "admin" : "staff", active = b.active == null ? row.active : b.active ? 1 : 0;
+   if (id === req.user.id && (role !== "admin" || !active)) return res.status(400).json({ error: "Kamu tidak bisa menurunkan atau menonaktifkan akunmu sendiri." });
+-  const perms = role === "admin" ? [] : b.perms == null ? normPerms(parsePerms(row.perms)) : normPerms(b.perms);
++  let perms = role === "admin" ? [] : b.perms == null ? normPerms(parsePerms(row.perms)) : normPerms(b.perms); if (tenantId) perms = perms.filter((x) => TENANT_PERMS.has(x));
+   let hash = row.pass_hash;
+   if (b.password) { if (String(b.password).length < 8 || String(b.password).length > 200) return res.status(400).json({ error: "Kata sandi minimal 8 karakter." }); hash = hashPw(b.password); }
+-  db.prepare("UPDATE users SET name = ?, role = ?, perms = ?, active = ?, pass_hash = ? WHERE id = ?").run(b.name == null ? row.name : cleanName(b.name) || row.username, role, JSON.stringify(perms), active, hash, id);
++  db.prepare("UPDATE users SET name = ?, role = ?, perms = ?, active = ?, pass_hash = ?, tenant_id = ? WHERE id = ?").run(b.name == null ? row.name : cleanName(b.name) || row.username, role, JSON.stringify(perms), active, hash, tenantId, id);
+   res.json({ ok: true });
+ });
+ app.delete("/admin/api/users/:id", adminAuth, needAdmin, (req, res) => {
+@@ -587,6 +620,52 @@ app.post("/admin/api/me/password", adminAuth, (req, res) => {
+   db.prepare("UPDATE users SET pass_hash = ? WHERE id = ?").run(hashPw(b.password), row.id);
+   res.set("Set-Cookie", userCookie(db.prepare("SELECT * FROM users WHERE id = ?").get(row.id), req)).json({ ok: true });
+ });
++// ---- Klien (tenant): hanya super admin ----
++const tenantRow = (r) => ({ id: r.id, name: r.name, note: r.note, active: !!r.active, createdAt: r.created_at, studios: r.studios || 0, users: r.users || 0 });
++app.get("/admin/api/tenants", adminAuth, needAdmin, (_req, res) => {
++  res.json({ tenants: db.prepare("SELECT t.*, (SELECT COUNT(*) FROM studios WHERE tenant_id = t.id) studios, (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) users FROM tenants t ORDER BY t.name").all().map(tenantRow),
++    unassigned: db.prepare("SELECT COUNT(*) n FROM studios WHERE tenant_id IS NULL").get().n });
++});
++app.post("/admin/api/tenants", adminAuth, needAdmin, (req, res) => {
++  const b = req.body || {}, name = cleanName(b.name);
++  if (!name) return res.status(400).json({ error: "Nama klien wajib diisi." });
++  if (db.prepare("SELECT 1 FROM tenants WHERE name = ?").get(name)) return res.status(409).json({ error: "Klien dengan nama itu sudah ada." });
++  const r = db.prepare("INSERT INTO tenants (name, note, active, created_at) VALUES (?,?,1,?)").run(name, String(b.note || "").slice(0, 200), now());
++  res.json({ ok: true, id: Number(r.lastInsertRowid) });
++});
++app.post("/admin/api/tenants/:id", adminAuth, needAdmin, (req, res) => {
++  const id = Number(req.params.id), row = db.prepare("SELECT * FROM tenants WHERE id = ?").get(id), b = req.body || {};
++  if (!row) return res.status(404).json({ error: "Klien tidak ditemukan." });
++  const name = b.name == null ? row.name : cleanName(b.name);
++  if (!name) return res.status(400).json({ error: "Nama klien tidak boleh kosong." });
++  const dup = db.prepare("SELECT id FROM tenants WHERE name = ? AND id != ?").get(name, id); if (dup) return res.status(409).json({ error: "Klien dengan nama itu sudah ada." });
++  db.prepare("UPDATE tenants SET name = ?, note = ?, active = ? WHERE id = ?").run(name, b.note == null ? row.note : String(b.note).slice(0, 200), b.active == null ? row.active : b.active ? 1 : 0, id);
++  res.json({ ok: true });
++});
++app.delete("/admin/api/tenants/:id", adminAuth, needAdmin, (req, res) => {
++  const id = Number(req.params.id), n = db.prepare("SELECT (SELECT COUNT(*) FROM studios WHERE tenant_id = ?) s, (SELECT COUNT(*) FROM users WHERE tenant_id = ?) u").get(id, id);
++  if (n.s || n.u) return res.status(409).json({ error: `Klien ini masih punya ${n.s} studio dan ${n.u} akun. Pindahkan atau hapus dulu.` });
++  db.prepare("DELETE FROM tenants WHERE id = ?").run(id);
++  res.json({ ok: true });
++});
++// ---- Token booth (satu per booth; hanya hash disimpan; token asli tampil SEKALI saat dibuat) ----
++const tokRow = (r) => ({ id: r.id, label: r.label, createdAt: r.created_at, lastUsedAt: r.last_used_at || null, revokedAt: r.revoked_at || null });
++app.get("/admin/api/studios/:key/tokens", adminAuth, needAdmin, (req, res) => {
++  res.json({ tokens: db.prepare("SELECT * FROM booth_tokens WHERE skey = ? ORDER BY id DESC").all(skey(req.params.key)).map(tokRow) });
++});
++app.post("/admin/api/studios/:key/tokens", adminAuth, needAdmin, (req, res) => {
++  const st = db.prepare("SELECT skey FROM studios WHERE skey = ?").get(skey(req.params.key));
++  if (!st) return res.status(404).json({ error: "Studio tidak ditemukan." });
++  if (db.prepare("SELECT COUNT(*) n FROM booth_tokens WHERE skey = ? AND revoked_at IS NULL").get(st.skey).n >= 10) return res.status(409).json({ error: "Maksimal 10 token aktif per studio. Cabut yang tidak dipakai." });
++  const token = auth.newToken();
++  db.prepare("INSERT INTO booth_tokens (skey, token_hash, label, created_at) VALUES (?,?,?,?)").run(st.skey, auth.sha(token), String(req.body?.label || "").replace(/[<>]/g, "").trim().slice(0, 60), now());
++  res.set("Cache-Control", "no-store").json({ ok: true, token });
++});
++app.delete("/admin/api/studios/:key/tokens/:id", adminAuth, needAdmin, (req, res) => {
++  const r = db.prepare("UPDATE booth_tokens SET revoked_at = ? WHERE id = ? AND skey = ? AND revoked_at IS NULL").run(now(), Number(req.params.id), skey(req.params.key));
++  res.json({ ok: true, revoked: Number(r.changes) > 0 });
++});
++
+ // ---- Cek koneksi menyeluruh: bucket, kasir, dan laporan sinkron tiap booth ----
+ app.post("/admin/api/diagnostics", adminAuth, need("storage.view"), async (_req, res) => {
+   const [buckets, kasir] = await Promise.all([
+@@ -614,19 +693,19 @@ app.post("/admin/api/diagnostics", adminAuth, need("storage.view"), async (_req,
+ 
+ // ---- Kelola studio: pantau online/offline, edit, gabung, putuskan/sambungkan, hapus ----
+ const studioRow = (r) => ({
+-  key: r.skey, name: r.name, note: r.note, blocked: !!r.blocked, status: studioStatus(r), retentionDays: r.retention_days || null,
++  key: r.skey, tenantId: r.tenant_id || null, tenantName: r.tenant_name || "", name: r.name, note: r.note, blocked: !!r.blocked, status: studioStatus(r), retentionDays: r.retention_days || null,
+   firstSeenAt: r.first_seen_at || null, lastSeenAt: r.last_seen_at || null, lastEvent: r.last_event || "", lastIp: r.last_ip || "",
+   sync: (() => { try { return r.sync_json ? JSON.parse(r.sync_json) : null; } catch { return null; } })(), syncAt: r.sync_at || null, sessions: r.sessions || 0, files: r.files || 0, bytes: r.bytes || 0, pending: r.pending || 0, lastUploadAt: r.last_upload || null, nameLocked: !!r.name_locked,
+ });
+-const studioList = () => db.prepare(`SELECT st.*,
++const studioList = (tenantId = null) => db.prepare(`SELECT st.*, (SELECT name FROM tenants WHERE id = st.tenant_id) tenant_name,
+   (SELECT COUNT(*) FROM sessions s WHERE lower(trim(s.studio)) = st.skey) sessions,
+   (SELECT COUNT(*) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey AND f.state = 'ok') files,
+   (SELECT COUNT(*) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey AND f.state = 'pending') pending,
+   (SELECT COALESCE(SUM(f.size), 0) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey AND f.state = 'ok') bytes,
+   (SELECT MAX(f.uploaded_at) FROM files f JOIN sessions s ON s.token = f.token WHERE lower(trim(s.studio)) = st.skey) last_upload
+-  FROM studios st ORDER BY (st.last_seen_at IS NULL), st.last_seen_at DESC, st.name`).all();
+-app.get("/admin/api/studios", adminAuth, need("studio.view"), (_req, res) => {
+-  const list = studioList().map(studioRow);
++  FROM studios st ${tenantId ? "WHERE st.tenant_id = ?" : ""} ORDER BY (st.last_seen_at IS NULL), st.last_seen_at DESC, st.name`).all(...(tenantId ? [tenantId] : []));
++app.get("/admin/api/studios", adminAuth, need("studio.view"), (req, res) => {
++  const list = studioList(tid(req)).map(studioRow);
+   res.json({ now: now(), onlineMs: ONLINE_MS, studios: list, counts: { online: list.filter((x) => x.status === "online").length, total: list.length, blocked: list.filter((x) => x.blocked).length } });
+ });
+ const retOf = (v) => { if (v === "" || v == null) return null; const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(1, Math.min(365, n)) : null; };
+@@ -634,17 +713,25 @@ app.post("/admin/api/studios", adminAuth, need("studio.edit"), (req, res) => {
+   const b = req.body || {}, name = String(b.name || "").replace(/[<>]/g, "").trim().slice(0, 60);
+   if (!name) return res.status(400).json({ error: "Nama studio wajib diisi." });
+   if (db.prepare("SELECT 1 FROM studios WHERE skey = ?").get(skey(name))) return res.status(409).json({ error: "Studio dengan nama itu sudah ada." });
++  const tenantId = b.tenantId ? Number(b.tenantId) : null;
++  if (tenantId && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(tenantId)) return res.status(400).json({ error: "Klien tidak ditemukan." });
+   const row = ensureStudio(name);
+-  db.prepare("UPDATE studios SET note = ?, retention_days = ?, name_locked = 1 WHERE skey = ?").run(String(b.note || "").slice(0, 200), retOf(b.retentionDays), row.skey);
++  db.prepare("UPDATE studios SET note = ?, retention_days = ?, name_locked = 1, tenant_id = ? WHERE skey = ?").run(String(b.note || "").slice(0, 200), retOf(b.retentionDays), tenantId, row.skey);
+   res.json({ ok: true });
+ });
+ app.post("/admin/api/studios/:key", adminAuth, need("studio.edit"), (req, res) => {
+   const key = skey(req.params.key), b = req.body || {};
+   let row = db.prepare("SELECT * FROM studios WHERE skey = ?").get(key);
+-  if (!row) return res.status(404).json({ error: "Studio tidak ditemukan." });
++  if (!row || !studioInScope(req, key)) return res.status(404).json({ error: "Studio tidak ditemukan." });
++  if (b.tenantId !== undefined) { // pindah klien: hanya akun non-klien
++    if (tid(req)) return res.status(403).json({ error: "Akunmu tidak boleh memindahkan studio." });
++    const t = b.tenantId ? Number(b.tenantId) : null;
++    if (t && !db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(t)) return res.status(400).json({ error: "Klien tidak ditemukan." });
++    db.prepare("UPDATE studios SET tenant_id = ? WHERE skey = ?").run(t, key); row.tenant_id = t;
++  }
+   let merged = false;
+   if (b.name != null && String(b.name).trim() && String(b.name).trim() !== row.name) {
+-    const r = renameStudio(key, b.name, { lock: true }); if (!r) return res.status(400).json({ error: "Nama tidak valid." });
++    const r = renameStudio(key, b.name, { lock: true }); if (!r || r.error) return res.status(r?.error ? 409 : 400).json({ error: r?.error || "Nama tidak valid." });
+     merged = r.merged; row = r.row;
+   }
+   if (b.note != null) db.prepare("UPDATE studios SET note = ? WHERE skey = ?").run(String(b.note).slice(0, 200), row.skey);
+@@ -654,13 +741,14 @@ app.post("/admin/api/studios/:key", adminAuth, need("studio.edit"), (req, res) =
+ });
+ app.delete("/admin/api/studios/:key", adminAuth, need("studio.edit"), async (req, res) => {
+   const key = skey(req.params.key), row = db.prepare("SELECT * FROM studios WHERE skey = ?").get(key);
+-  if (!row) return res.json({ ok: true });
++  if (!row || !studioInScope(req, key)) return res.json({ ok: true });
+   if (row.blocked) return res.status(400).json({ error: "Studio sedang diputus. Sambungkan dulu, atau biarkan tetap terputus supaya booth-nya terblokir." });
+   const toks = db.prepare("SELECT token FROM sessions WHERE lower(trim(studio)) = ?").all(key).map((x) => x.token);
+   if (toks.length && !(req.query.purge === "1")) return res.status(409).json({ error: `Studio ini masih punya ${toks.length} link.`, sessions: toks.length });
+   let left = 0;
+   for (const t of toks) { db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").run(now() - 1000, t); if (!(await purgeSession(t))) left++; }
+   if (left) return res.json({ ok: true, deleted: false, left });
++  db.prepare("DELETE FROM booth_tokens WHERE skey = ?").run(key);
+   db.prepare("DELETE FROM studios WHERE skey = ?").run(key);
+   res.json({ ok: true, deleted: true, purged: toks.length });
+ });
+@@ -672,6 +760,7 @@ app.get("/admin/api/sessions", adminAuth, need("link.view"), (req, res) => {
+   const q = String(req.query.q || "").trim().slice(0, 60), studio = String(req.query.studio || "").slice(0, 80), source = String(req.query.source || "");
+   const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 30)), offset = Math.max(0, Number(req.query.offset) || 0);
+   const w = [], a = [];
++  if (tid(req)) { w.push(inTenant); a.push(tid(req)); }
+   if (q) { const t = likeEsc(q.replace(/[\s-]/g, "")), n = likeEsc(q); w.push("(s.token LIKE ? ESCAPE '\\' COLLATE NOCASE OR s.studio LIKE ? ESCAPE '\\' OR s.studio_code LIKE ? ESCAPE '\\' OR s.tx_no LIKE ? ESCAPE '\\' COLLATE NOCASE)"); a.push(`%${t}%`, `%${n}%`, `%${n}%`, `%${n}%`); }
+   if (studio) { w.push("s.studio = ?"); a.push(studio); }
+   if (source === "manual") w.push("s.manual = 1"); else if (source === "booth") w.push("s.manual = 0");
+@@ -686,7 +775,7 @@ app.get("/admin/api/sessions", adminAuth, need("link.view"), (req, res) => {
+ const MAX_EXPIRY_MS = 730 * 86400000;
+ app.post("/admin/api/sessions/:token", adminAuth, need("link.edit"), (req, res) => {
+   const s = db.prepare("SELECT * FROM sessions WHERE token = ?").get(req.params.token);
+-  if (!s) return res.status(404).json({ error: "Sesi tidak ditemukan." });
++  if (!s || !sessionInScope(req, s.token)) return res.status(404).json({ error: "Sesi tidak ditemukan." });
+   const b = req.body || {};
+   if (b.expiresAt != null) {
+     const t = Number(b.expiresAt);
+@@ -697,13 +786,14 @@ app.post("/admin/api/sessions/:token", adminAuth, need("link.edit"), (req, res)
+   if (b.studio != null) {
+     const name = String(b.studio).replace(/[<>]/g, "").trim().slice(0, 60);
+     if (!name) return res.status(400).json({ error: "Nama studio tidak boleh kosong." });
++    if (!studioInScope(req, name)) return res.status(403).json({ error: "Studio tujuan bukan milik klienmu." });
+     db.prepare("UPDATE sessions SET studio = ? WHERE token = ?").run(name, s.token);
+   }
+   res.json({ ok: true });
+ });
+ app.delete("/admin/api/sessions/:token", adminAuth, need("link.edit"), async (req, res) => {
+   const s = db.prepare("SELECT token FROM sessions WHERE token = ?").get(req.params.token);
+-  if (!s) return res.json({ ok: true, deleted: true });
++  if (!s || !sessionInScope(req, s.token)) return res.json({ ok: true, deleted: true });
+   db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").run(now() - 1000, s.token); // link langsung mati
+   const gone = await purgeSession(s.token);
+   res.json({ ok: true, deleted: gone }); // false = sebagian file di cloud belum terhapus; dibereskan otomatis berkala
+@@ -711,7 +801,7 @@ app.delete("/admin/api/sessions/:token", adminAuth, need("link.edit"), async (re
+ // Aksi massal: { action: "delete" | "extend", tokens: [...], days }  (extend = tambah N hari dari masa berlaku sekarang)
+ app.post("/admin/api/sessions-bulk", adminAuth, need("link.edit"), async (req, res) => {
+   const b = req.body || {};
+-  const tokens = [...new Set((Array.isArray(b.tokens) ? b.tokens : []).map((x) => String(x)))].slice(0, 200);
++  const tokens = [...new Set((Array.isArray(b.tokens) ? b.tokens : []).map((x) => String(x)))].filter((t) => sessionInScope(req, t)).slice(0, 200);
+   if (!tokens.length) return res.status(400).json({ error: "Tidak ada sesi dipilih." });
+   let done = 0, pending = 0;
+   if (b.action === "extend") {
+diff --git a/test/tenant.js b/test/tenant.js
+new file mode 100644
+index 0000000..d2c6008
+--- /dev/null
++++ b/test/tenant.js
+@@ -0,0 +1,90 @@
++// Uji: multi-klien (tenant) — isolasi data antar klien, hak akun klien, token booth dari platform (terbit / pakai / cabut), klien nonaktif.
++//   node test/tenant.js
++process.env.DATA_DIR = require("fs").mkdtempSync(require("os").tmpdir() + "/gal-ten-");
++process.env.ADMIN_PASSWORD = "rahasia"; process.env.PUBLIC_URL = "https://foto.example.com";
++const assert = require("assert");
++
++(async () => {
++  const { app } = require("../src/server"); const { db } = require("../src/db");
++  const srv = app.listen(0); const base = `http://127.0.0.1:${srv.address().port}`;
++  const JS = { "Content-Type": "application/json" };
++  const call = async (p, o = {}, cookie) => { const r = await fetch(base + p, { ...o, headers: { ...JS, ...(cookie ? { Cookie: cookie } : {}), ...(o.headers || {}) } }); return { status: r.status, body: await r.json().catch(() => null), r }; };
++  const login = async (username, password) => { const r = await fetch(base + "/admin/api/login", { method: "POST", headers: JS, body: JSON.stringify({ username, password }) }); return r.status === 200 ? r.headers.get("set-cookie").split(";")[0] : null; };
++  const post = (p, body, c) => call(p, { method: "POST", body: JSON.stringify(body) }, c);
++  const root = await login("admin", "rahasia"); assert(root, "login super admin gagal");
++
++  // --- siapkan: 2 klien, studio masing-masing + 1 studio belum dibagikan, 1 akun per klien ---
++  const tA = (await post("/admin/api/tenants", { name: "Klien A" }, root)).body.id, tB = (await post("/admin/api/tenants", { name: "Klien B" }, root)).body.id;
++  assert((await post("/admin/api/tenants", { name: "klien a" }, root)).status === 409, "nama klien kembar (tak peka huruf) harus ditolak");
++  for (const [name, t] of [["Studio A1", tA], ["Studio B1", tB], ["Studio Yatim", null]]) assert((await post("/admin/api/studios", { name, tenantId: t }, root)).status === 200);
++  const mk = async (username, tenantId) => assert((await post("/admin/api/users", { username, password: "password-panjang", role: "admin", tenantId, perms: ["studio.view", "link.view", "link.edit", "upload", "storage.edit", "settings.edit", "studio.edit"] }, root)).status === 200);
++  await mk("akun-a", tA); await mk("akun-b", tB);
++  const t0 = Date.now();
++  for (const [tok, st] of [["SESIAAAAAA", "Studio A1"], ["SESIBBBBBB", "Studio B1"], ["SESIYATIMM", "Studio Yatim"]]) db.prepare("INSERT INTO sessions (token, studio, studio_code, mode, created_at, expires_at) VALUES (?,?,?,?,?,?)").run(tok, st, "x", "photo", t0, t0 + 86400000);
++  const A = await login("akun-a", "password-panjang"); assert(A);
++
++  // --- akun klien A: hanya melihat miliknya, walau diberi hak "admin"/storage/settings ---
++  const me = (await call("/admin/api/me", {}, A)).body;
++  assert(me.tenantName === "Klien A" && me.admin === false && !me.perms.includes("storage.edit") && !me.perms.includes("settings.edit") && !me.perms.includes("studio.edit"), "hak akun klien harus dipangkas: " + JSON.stringify(me));
++  const studios = (await call("/admin/api/studios", {}, A)).body.studios.map((x) => x.name);
++  assert.deepStrictEqual(studios, ["Studio A1"], "klien A hanya boleh melihat studionya: " + studios);
++  const links = (await call("/admin/api/sessions?limit=100", {}, A)).body;
++  assert.deepStrictEqual(links.sessions.map((x) => x.token), ["SESIAAAAAA"], "klien A hanya boleh melihat link studionya");
++  assert((await call("/admin/api/sessions?q=SESIBBBBBB", {}, A)).body.total === 0, "pencarian tidak boleh menembus klien lain");
++  assert((await call("/admin/api/sessions?studio=Studio%20B1", {}, A)).body.total === 0, "filter studio klien lain harus kosong");
++  const st = (await call("/admin/api/state", {}, A)).body;
++  assert(st.buckets.length === 0 && st.stats.sessions === 1 && st.studios.length === 1, "ringkasan klien harus terbatas: " + JSON.stringify(st.stats));
++
++  // --- tidak boleh mengubah / menghapus milik klien lain ---
++  assert((await post("/admin/api/sessions/SESIBBBBBB", { expiresAt: Date.now() + 5 * 86400000 }, A)).status === 404);
++  assert((await call("/admin/api/sessions/SESIBBBBBB", { method: "DELETE" }, A)).status === 200);
++  assert(db.prepare("SELECT 1 FROM sessions WHERE token = 'SESIBBBBBB'").get(), "sesi klien B tidak boleh terhapus oleh klien A");
++  const bulk = await post("/admin/api/sessions-bulk", { action: "delete", tokens: ["SESIBBBBBB", "SESIYATIMM"] }, A);
++  assert(bulk.status === 400 && !bulk.body.done, "hapus massal untuk milik lain / yatim harus ditolak: " + JSON.stringify(bulk.body));
++  assert(db.prepare("SELECT COUNT(*) n FROM sessions WHERE token IN ('SESIBBBBBB','SESIYATIMM')").get().n === 2, "sesi lain tidak boleh terhapus");
++  assert((await post("/admin/api/sessions/SESIAAAAAA", { studio: "Studio B1" }, A)).status === 403, "tidak boleh memindahkan sesi ke studio klien lain");
++  assert((await post("/admin/api/upload/prepare", { studio: "Studio B1", token: "ZZZZZZZZZ2", files: [] }, A)).status === 403, "unggah manual ke studio klien lain");
++  assert((await post("/admin/api/upload/prepare", { studio: "Studio Baru Liar", token: "ZZZZZZZZZ2", files: [] }, A)).status === 403, "klien tidak boleh membuat studio baru lewat unggah manual");
++  assert((await post("/admin/api/studios/studio%20b1", { note: "x" }, A)).status === 403 || (await post("/admin/api/studios/studio%20b1", { note: "x" }, A)).status === 404);
++  assert((await post("/admin/api/studios/studio%20a1", { tenantId: tB }, A)).status === 403, "klien tidak boleh memindahkan studio ke klien lain");
++
++  // --- area super admin tertutup untuk akun klien ---
++  for (const [m, p, b] of [["GET", "/admin/api/users"], ["GET", "/admin/api/tenants"], ["POST", "/admin/api/tenants", { name: "Z" }], ["POST", "/admin/api/studios/studio%20a1/tokens", {}], ["POST", "/admin/api/settings", { retentionDays: 1 }], ["POST", "/admin/api/buckets", { endpoint: "https://x.y", bucket: "b", accessKey: "k" }], ["POST", "/admin/api/diagnostics"]])
++    assert((await call(p, { method: m, body: b ? JSON.stringify(b) : undefined }, A)).status === 403, `${m} ${p} harus 403 untuk akun klien`);
++
++  // --- super admin tetap melihat semuanya ---
++  assert((await call("/admin/api/studios", {}, root)).body.studios.length === 3);
++  assert((await call("/admin/api/sessions?limit=100", {}, root)).body.total === 3);
++
++  // --- tidak boleh menggabung studio lintas klien ---
++  assert((await post("/admin/api/studios/studio%20a1", { name: "Studio B1" }, root)).status === 409, "gabung studio lintas klien harus ditolak");
++
++  // --- token booth platform ---
++  const tk = await post("/admin/api/studios/studio%20a1/tokens", { label: "Booth lobi" }, root);
++  assert(tk.status === 200 && /^pst_[A-Za-z0-9_-]{40,}$/.test(tk.body.token), "token harus berformat pst_...");
++  const token = tk.body.token, H = { Authorization: "Bearer " + token };
++  const ping = await call("/api/v1/ping", { headers: H });
++  assert(ping.status === 200 && ping.body.studio === "Studio A1", "token platform harus lolos: " + JSON.stringify(ping.body));
++  assert((await call("/api/v1/heartbeat", { method: "POST", headers: H, body: JSON.stringify({ pendingSessions: 0 }) })).status === 200);
++  const list = (await call("/admin/api/studios/studio%20a1/tokens", {}, root)).body.tokens;
++  assert(list.length === 1 && list[0].label === "Booth lobi" && list[0].lastUsedAt && !JSON.stringify(list).includes(token), "daftar token tidak boleh memuat token asli");
++  const dump = JSON.stringify(db.prepare("SELECT * FROM booth_tokens").all()); assert(!dump.includes(token), "token asli tidak boleh tersimpan di database (hanya hash)");
++  assert((await call("/api/v1/sessions/SESIBBBBBB/done", { method: "POST", headers: H, body: JSON.stringify({ fid: "x" }) })).status === 404, "token studio A tidak boleh menyentuh sesi studio B");
++  assert((await call("/api/v1/ping", { headers: { Authorization: "Bearer pst_tokenasalasalan0000000000000000000000000" } })).status === 401, "token palsu 'pst_' harus ditolak");
++
++  // klien dinonaktifkan: booth ditolak & akun keluar
++  assert((await post(`/admin/api/tenants/${tA}`, { active: false }, root)).status === 200);
++  assert((await call("/api/v1/ping", { headers: H })).status === 403, "booth milik klien nonaktif harus ditolak");
++  assert((await call("/admin/api/state", {}, A)).status === 401, "akun klien nonaktif harus terputus");
++  assert((await post(`/admin/api/tenants/${tA}`, { active: true }, root)).status === 200);
++  assert((await call("/api/v1/ping", { headers: H })).status === 200, "aktif lagi = pulih");
++
++  // cabut token = langsung mati
++  assert((await call(`/admin/api/studios/studio%20a1/tokens/${list[0].id}`, { method: "DELETE" }, root)).body.revoked === true);
++  assert((await call("/api/v1/ping", { headers: H })).status === 401, "token yang dicabut harus langsung mati");
++
++  // hapus klien yang masih punya studio ditolak
++  assert((await call(`/admin/api/tenants/${tA}`, { method: "DELETE" }, root)).status === 409);
++  console.log("ok  multi-klien: isolasi studio/link/unggah antar klien, hak akun klien dipangkas, area super admin tertutup, token booth (terbit/pakai/hash/cabut), klien nonaktif");
++  srv.close(); process.exit(0);
++})().catch((e) => { console.error("GAGAL:", e.stack || e.message); process.exit(1); });

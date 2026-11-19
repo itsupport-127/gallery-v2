@@ -1,6 +1,7 @@
 // Token studio = token yang sama dengan yang dipakai booth untuk sinkron ke kasir. Diverifikasi ke kasir (GET /api/photobox/ping),
 // hasilnya di-cache supaya tidak membebani kasir. Cadangan: STUDIO_TOKENS="token:Nama Studio,token2:Studio 2" (tanpa kasir / untuk uji).
 const crypto = require("crypto");
+const { db } = require("./db");
 const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const cache = new Map(); // sha(token) -> { ok, studio, at }
 const OK_TTL = 10 * 60 * 1000, BAD_TTL = 30 * 1000;
@@ -14,9 +15,17 @@ function staticTokens() {
   return m;
 }
 
+/** Token yang diterbitkan platform ("pst_..."): dicari lewat hash, harus belum dicabut. */
+function platformToken(token) {
+  const row = db.prepare("SELECT bt.id, bt.skey, st.name, st.tenant_id FROM booth_tokens bt JOIN studios st ON st.skey = bt.skey WHERE bt.token_hash = ? AND bt.revoked_at IS NULL").get(sha(token));
+  return row ? { studio: row.name, skey: row.skey, tokenId: row.id, tenantId: row.tenant_id || null } : null;
+}
+const newToken = () => "pst_" + crypto.randomBytes(32).toString("base64url");
+
 async function verify(token) {
   token = String(token || "");
   if (token.length < 16 || token.length > 200) return null;
+  if (token.startsWith("pst_")) return platformToken(token); // token platform: tidak ada jalur lain (cabut = langsung mati)
   const st = staticTokens();
   if (st.has(token)) return { studio: st.get(token) };
   const base = String(process.env.KASIR_URL || "").trim().replace(/\/+$/, "").replace(/\/api\/photobox$/i, "");
@@ -49,4 +58,4 @@ async function checkKasir() {
   } catch (e) { return { configured: true, ok: false, ms: Date.now() - t0, url: base, error: e.name === "AbortError" ? "Kasir tidak menjawab (timeout)" : `Kasir tidak terjangkau: ${e.cause?.code || e.message}` }; }
 }
 
-module.exports = { verify, checkKasir };
+module.exports = { verify, checkKasir, newToken, sha };

@@ -78,3 +78,16 @@ Akun `ADMIN_USER` / `ADMIN_PASSWORD` di `.env` selalu **admin penuh** (tidak bis
 * Perubahan hak, nonaktifkan, atau hapus akun **langsung berlaku** (sesi diperiksa tiap permintaan). Ganti sandi memutus sesi lama. Staf bisa ganti sandi sendiri lewat tombol di bawah menu.
 * Pembatasan dijaga di server (HTTP 403), bukan hanya disembunyikan di tampilan. Detail bucket (endpoint, nama bucket, access key) disembunyikan dari akun tanpa hak "lihat penyimpanan".
 
+
+## Platform multi-klien (tahap 1)
+
+Galeri ini sekaligus menjadi pusat pengelolaan banyak studio:
+
+* **Klien (tenant)** = pelanggan Anda; punya banyak studio. Menu **Klien** (super admin saja): tambah, ubah, nonaktifkan. Klien nonaktif = semua booth dan akunnya langsung berhenti.
+* **Studio** dibagikan ke klien (Studio > Edit > Klien). Studio yang belum dibagikan hanya terlihat super admin.
+* **Akun klien**: di menu Pengguna pilih Klien. Akun klien selalu staf dengan hak terbatas (lihat studio, lihat/atur link, unggah manual) dan **hanya melihat studio milik klien itu**: daftar studio, link, ringkasan, unggah manual, pencarian. Hak penyimpanan, pengaturan umum, pengguna, token, dan pemutusan studio tidak pernah bisa dimiliki akun klien. Pembatasan dijaga di server.
+* **Token booth**: Studio > *Token booth* > buat. Satu token per booth (`pst_...`), token asli tampil sekali, hanya hash yang disimpan, bisa dicabut satu per satu. Tempel di booth: Admin > Pembayaran > Galeri cloud / sinkron. Token lama (`STUDIO_TOKENS`, kasir) tetap jalan sampai diganti.
+* **Masa simpan 48 jam**: Pengaturan > Masa simpan = 2 hari (atau per studio). Penghapusan jalan tiap 30 menit.
+* Uji: `npm test` (termasuk `test/tenant.js`: isolasi antar klien, hak akun klien, siklus token booth).
+
+Berikutnya: riwayat transaksi & omzet per studio/klien, status booth (kamera/printer/kertas) + alert, atur pengaturan booth dari web.

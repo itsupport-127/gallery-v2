@@ -118,6 +118,7 @@ tr.blk td{background:#FFF3F5}
  <nav id="nav">
   <a href="#ringkasan" data-p="ringkasan"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Ringkasan</span></a>
   <a href="#studio" data-p="studio" data-need="studio.view"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Studio</span></a>
+  <a href="#klien" data-p="klien" data-need="@admin"><svg viewBox="0 0 24 24"><path d="M3 20V9l6-4 6 4v11M15 20V12h6v8M7 20v-4h4v4"/></svg><span>Klien</span></a>
   <a href="#link" data-p="link" data-need="link.view"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span>Link pelanggan</span></a>
   <a href="#penyimpanan" data-p="penyimpanan" data-need="storage.view"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 8.5a4.5 4.5 0 0 1 .5 9Z"/></svg><span>Penyimpanan cloud</span></a>
   <a href="#pengguna" data-p="pengguna" data-need="@admin"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Pengguna</span></a>
@@ -148,6 +149,7 @@ tr.blk td{background:#FFF3F5}
 <dialog id="s_dlg"><h2 id="s_dt">Tambah studio</h2>
  <label for="s_nm">Nama studio</label><input id="s_nm" maxlength="60" placeholder="mis. Studio Emma">
  <p class="muted" id="s_nmh" style="margin:6px 0 0"></p>
+ <div id="s_tenbox" data-need="@admin"><label for="s_ten" style="margin-top:12px">Klien</label><select id="s_ten"></select></div>
  <label for="s_note" style="margin-top:12px">Catatan (lokasi, PIC, dll.)</label><input id="s_note" maxlength="200" placeholder="mis. Cabang Bandung, PIC Rina">
  <label for="s_ret" style="margin-top:12px">Masa simpan link (hari)</label><input id="s_ret" type="number" min="1" max="365" placeholder="kosong = ikut pengaturan umum">
  <p class="muted" style="margin:10px 0 0">Studio dibuat otomatis saat booth pertama terhubung. Tambah manual hanya untuk menyiapkan catatan atau masa simpan lebih dulu. Kalau namanya sama dengan studio lain, keduanya digabung.</p>
@@ -211,6 +213,24 @@ Pilih <b>folder tanggal</b> (mis. <code>2026-10-23</code>) untuk mengunggah bany
 </div><p class="muted" id="f_hint">R2: buat bucket PRIVATE + API token "Object Read & Write". Endpoint ada di halaman R2 (S3 API). Region: auto.</p><p style="margin:14px 0 0"><button class="btn" onclick="saveB()">Simpan bucket</button> <button class="btn s" onclick="hideF()">Batal</button> <span id="fmsg"></span></p></div>
  <div class="card"><h2>Daftar bucket</h2><div class="tw"><table id="bt"></table></div></div>
 </section>
+<section class="page" id="pg-klien">
+ <h1>Klien</h1><p class="lead">Klien = pelanggan Anda. Tiap klien punya banyak studio, dan akun milik klien hanya bisa melihat studionya sendiri. Klien dinonaktifkan = semua booth dan akunnya langsung berhenti.</p>
+ <div class="srow"><span class="schip" id="k_cnt">–</span><span class="grow"></span><button class="btn" type="button" onclick="openK()">+ Tambah klien</button></div>
+ <div class="card"><div class="tw"><table id="k_t"></table></div><p class="muted" id="k_info" style="margin:10px 0 0"></p></div>
+</section>
+<dialog id="k_dlg"><h2 id="k_dt">Tambah klien</h2>
+ <label for="k_nm">Nama klien</label><input id="k_nm" maxlength="60" placeholder="mis. PT Foto Ceria">
+ <label for="k_note" style="margin-top:12px">Catatan</label><input id="k_note" maxlength="200" placeholder="mis. kontak, kota">
+ <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:600"><input type="checkbox" id="k_act" checked> Aktif (booth &amp; akun boleh dipakai)</label>
+ <p style="margin:14px 0 0"><button class="btn" type="button" onclick="saveK()">Simpan</button> <button class="btn s" type="button" onclick="$('k_dlg').close()">Batal</button> <span id="k_msg"></span></p>
+</dialog>
+<dialog id="t_dlg"><h2 id="t_dt">Token booth</h2>
+ <p class="muted" style="margin:0 0 10px">Satu token per booth. Token asli hanya tampil sekali saat dibuat; yang tersimpan hanya hash-nya. Cabut token = booth itu langsung ditolak.</p>
+ <div id="t_new" hidden style="background:#FFF7DB;border:1px solid #E8D58A;border-radius:10px;padding:10px;margin-bottom:12px"><b>Token baru — salin sekarang, tidak akan tampil lagi:</b><div style="display:flex;gap:8px;margin-top:6px"><input id="t_val" readonly style="font-family:monospace"><button class="btn sm" type="button" onclick="copyTok()">Salin</button></div></div>
+ <div class="tw"><table id="t_t"></table></div>
+ <div style="display:flex;gap:8px;margin-top:12px"><input id="t_lbl" maxlength="60" placeholder="Label booth, mis. Booth lobi"><button class="btn" type="button" onclick="newTok()">Buat token</button></div>
+ <p style="margin:14px 0 0"><button class="btn s" type="button" onclick="$('t_dlg').close()">Tutup</button> <span id="t_msg"></span></p>
+</dialog>
 <section class="page" id="pg-pengguna">
  <h1>Pengguna</h1><p class="lead">Buat akun untuk tim dan atur apa saja yang boleh dilakukan tiap orang. Akun admin punya akses penuh. Perubahan hak langsung berlaku tanpa login ulang.</p>
  <div class="srow"><span class="schip" id="m_cnt">–</span><span class="grow"></span><button class="btn" type="button" onclick="openM()">+ Tambah pengguna</button></div>
@@ -220,7 +240,8 @@ Pilih <b>folder tanggal</b> (mis. <code>2026-10-23</code>) untuk mengunggah bany
  <label for="m_un">Username</label><input id="m_un" maxlength="30" autocomplete="off" placeholder="mis. rina">
  <label for="m_nm" style="margin-top:12px">Nama</label><input id="m_nm" maxlength="60" placeholder="mis. Rina (CS)">
  <label for="m_pw" style="margin-top:12px" id="m_pwl">Kata sandi</label><input id="m_pw" type="password" autocomplete="new-password" placeholder="minimal 8 karakter">
- <label for="m_role" style="margin-top:12px">Peran</label><select id="m_role" onchange="mRole()"><option value="staff">Staf (pilih hak akses)</option><option value="admin">Admin (akses penuh, kelola pengguna)</option></select>
+ <label for="m_ten" style="margin-top:12px">Klien</label><select id="m_ten" onchange="mTen()"></select>
+ <label for="m_role" style="margin-top:12px" id="m_rolel">Peran</label><select id="m_role" onchange="mRole()"><option value="staff">Staf (pilih hak akses)</option><option value="admin">Admin (akses penuh, kelola pengguna)</option></select>
  <div id="m_pbox"><label for="m_preset" style="margin-top:12px">Isi cepat dari paket</label><select id="m_preset" onchange="mPreset()"></select>
   <div id="m_perms" style="margin-top:10px"></div></div>
  <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:600"><input type="checkbox" id="m_act"> Akun aktif (boleh masuk)</label>
@@ -455,7 +476,9 @@ async function runDiag(){const btn=$('dg_btn');btn.disabled=true;btn.textContent
  S.now=r.at;$('dg_at').textContent='Dicek '+new Date(r.at).toLocaleTimeString('id-ID');load()}
 
 // ---- Kelola studio ----
-let S={rows:[],editKey:null,t:null,now:0};
+let S={rows:[],editKey:null,t:null,now:0};let K={rows:[]};
+async function ensureK(){if(!ME.admin)return;const r=await api('/admin/api/tenants');if(r&&r.tenants){K.rows=r.tenants;K.unassigned=r.unassigned||0}}
+const fillTen=(id,val)=>{$(id).innerHTML='<option value="">— Tanpa klien (hanya super admin) —</option>'+K.rows.map(t=>`<option value="${t.id}"${t.active?'':' disabled'}>${he(t.name)}${t.active?'':' (nonaktif)'}</option>`).join('');$(id).value=val?String(val):''};
 const EV={ping:'cek koneksi',sessions:'daftar sesi',upload:'unggah file',delete:'hapus sesi'};
 const ST={online:'Online',recent:'Baru saja',offline:'Offline',never:'Belum terhubung',blocked:'Terputus'};
 const ago=t=>{if(!t)return'belum pernah';const d=Math.max(0,Math.round((S.now-t)/1000));return d<45?'baru saja':d<3600?Math.round(d/60)+' menit lalu':d<86400?Math.round(d/3600)+' jam lalu':Math.round(d/86400)+' hari lalu'};
@@ -464,20 +487,21 @@ async function loadS(){const r=await api('/admin/api/studios');if(!r||!r.studios
 function drawS(){
  $('s_t').innerHTML=S.rows.length?'<tr><th>Status</th><th>Studio</th><th>Link & file</th><th>Terakhir terlihat</th><th>Sinkron booth</th><th>Unggahan terakhir</th><th></th></tr>'+S.rows.map(x=>`<tr class="${x.blocked?'blk':''}">
   <td><span class="dot ${x.status}">${ST[x.status]}</span></td>
-  <td><b>${he(x.name)}</b>${x.note?`<div class="muted">${he(x.note)}</div>`:''}${x.retentionDays?`<div class="muted">Masa simpan ${x.retentionDays} hari</div>`:''}</td>
+  <td><b>${he(x.name)}</b>${x.tenantName?`<div class="muted">Klien: ${he(x.tenantName)}</div>`:(ME.admin?'<div class="muted" style="color:#B26A00">Belum dibagikan ke klien</div>':'')}${x.note?`<div class="muted">${he(x.note)}</div>`:''}${x.retentionDays?`<div class="muted">Masa simpan ${x.retentionDays} hari</div>`:''}</td>
   <td>${x.sessions} link<div class="muted">${x.files} file · ${fmtBytes(x.bytes)}${x.pending?` · ${x.pending} menunggu`:''}</div></td>
   <td title="${x.lastSeenAt?he(new Date(x.lastSeenAt).toLocaleString('id-ID')):''}">${ago(x.lastSeenAt)}${x.lastEvent?`<div class="muted">${EV[x.lastEvent]||he(x.lastEvent)}${x.lastIp?' · '+he(x.lastIp):''}</div>`:''}</td>
   <td>${syncCell(x)}</td>
   <td>${x.lastUploadAt?ago(x.lastUploadAt):'<span class="muted">–</span>'}</td>
   <td><div class="acts">${can('link.view')?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="seeS(this.dataset.k)">Lihat link</button>`:''}
+   ${ME.admin?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="openT(this.dataset.k)">Token booth</button>`:''}
    ${can('studio.edit')?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="openS(this.dataset.k)">Edit</button>
    ${x.blocked?`<button class="btn sm" type="button" data-k="${he(x.key)}" onclick="blockS(this.dataset.k,false)">Sambungkan</button>`:`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="blockS(this.dataset.k,true)">Putuskan</button>`}
    <button class="btn sm d" type="button" data-k="${he(x.key)}" onclick="delS(this.dataset.k)">Hapus</button>`:''}</div></td></tr>`).join(''):'<tr><td class="muted" style="padding:18px 8px">Belum ada studio. Studio muncul otomatis begitu booth pertama terhubung ke galeri.</td></tr>';
  $('s_info').textContent=S.rows.length?'Online = menghubungi galeri dalam 5 menit terakhir. Booth menghubungi galeri tiap ±1 menit selama aplikasinya menyala dan galeri diaktifkan.':''}
 const sRow=k=>S.rows.find(x=>x.key===k);
-function openS(k){const x=k?sRow(k):null;S.editKey=x?x.key:null;$('s_dt').textContent=x?'Edit studio':'Tambah studio';$('s_nm').value=x?x.name:'';$('s_note').value=x?x.note:'';$('s_ret').value=x&&x.retentionDays?x.retentionDays:'';$('s_msg').textContent='';
+async function openS(k){await ensureK();const x=k?sRow(k):null;fillTen('s_ten',x?x.tenantId:'');S.editKey=x?x.key:null;$('s_dt').textContent=x?'Edit studio':'Tambah studio';$('s_nm').value=x?x.name:'';$('s_note').value=x?x.note:'';$('s_ret').value=x&&x.retentionDays?x.retentionDays:'';$('s_msg').textContent='';
  $('s_nmh').textContent=x?'Mengubah nama ikut mengubah semua link studio ini. Nama yang sama dengan studio lain akan menggabungkan keduanya.':'';$('s_dlg').showModal()}
-async function saveS(){const body={note:$('s_note').value.trim(),retentionDays:$('s_ret').value.trim()===''?null:Number($('s_ret').value)},nm=$('s_nm').value.trim();
+async function saveS(){const body={note:$('s_note').value.trim(),...(ME.admin?{tenantId:$('s_ten').value?Number($('s_ten').value):null}:{}),retentionDays:$('s_ret').value.trim()===''?null:Number($('s_ret').value)},nm=$('s_nm').value.trim();
  if(!nm){$('s_msg').textContent='Nama studio wajib diisi';$('s_msg').className='bad';return}
  let r;
  if(S.editKey){const x=sRow(S.editKey);if(nm!==x.name){const other=S.rows.find(y=>y.key!==x.key&&y.name.toLowerCase()===nm.toLowerCase());if(other&&!await ask('Gabungkan dengan “'+other.name+'”?','Semua link “'+x.name+'” dipindah ke “'+other.name+'”. Tindakan ini tidak bisa dibatalkan.',{ok:'Ya, gabungkan',danger:false}))return;body.name=nm}
@@ -528,11 +552,11 @@ setInterval(liveTick,LIVE_MS);document.addEventListener('visibilitychange',()=>{
 // ---- pengguna & hak akses ----
 const ROLE_TXT=r=>r==='admin'?'Admin':'Staf';let MU={rows:[],edit:null};
 const fmtLast=t=>t?new Date(t).toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'Belum pernah';
-async function loadM(){const r=await api('/admin/api/users');if(!r||!r.users)return;MU.rows=r.users;
+async function loadM(){await ensureK();MU.tp=null;const r=await api('/admin/api/users');if(r&&r.tenantPerms)MU.tp=r.tenantPerms;if(!r||!r.users)return;MU.rows=r.users;
  $('m_cnt').textContent=r.users.length+' pengguna + admin utama';
  $('m_t').innerHTML='<tr><th>Pengguna</th><th>Peran / hak akses</th><th>Terakhir masuk</th><th>Status</th><th></th></tr>'+
   `<tr><td><b>${he(r.envUser)}</b><div class="muted">admin utama (dari file .env)</div></td><td>Admin · akses penuh</td><td class="muted">–</td><td><span class="pill ok">Aktif</span></td><td class="muted">Tidak bisa diubah di sini</td></tr>`+
-  r.users.map(u=>`<tr><td><b>${he(u.name)}</b><div class="muted">${he(u.username)}</div></td><td>${u.role==='admin'?'Admin · akses penuh':'Staf · '+(u.perms.length?u.perms.map(k=>he(ME.catalog[k]||k)).join(', '):'<span class="bad">tanpa hak</span>')}</td><td>${fmtLast(u.lastLoginAt)}</td><td>${u.active?'<span class="pill ok">Aktif</span>':'<span class="pill bad">Nonaktif</span>'}</td><td><div class="acts"><button class="btn sm s" type="button" data-id="${u.id}" onclick="openM(+this.dataset.id)">Edit</button> <button class="btn sm d" type="button" data-id="${u.id}" onclick="delM(+this.dataset.id)">Hapus</button></div></td></tr>`).join('');
+  r.users.map(u=>`<tr><td><b>${he(u.name)}</b><div class="muted">${he(u.username)}</div></td><td>${u.tenantName?'<b>'+he(u.tenantName)+'</b> · ':''}${u.role==='admin'?'Admin · akses penuh':'Staf · '+(u.perms.length?u.perms.map(k=>he(ME.catalog[k]||k)).join(', '):'<span class="bad">tanpa hak</span>')}</td><td>${fmtLast(u.lastLoginAt)}</td><td>${u.active?'<span class="pill ok">Aktif</span>':'<span class="pill bad">Nonaktif</span>'}</td><td><div class="acts"><button class="btn sm s" type="button" data-id="${u.id}" onclick="openM(+this.dataset.id)">Edit</button> <button class="btn sm d" type="button" data-id="${u.id}" onclick="delM(+this.dataset.id)">Hapus</button></div></td></tr>`).join('');
  $('m_info').textContent=''}
 function mBuild(){const box=$('m_perms');if(box.dataset.done)return;box.dataset.done=1;
  box.innerHTML=Object.entries(ME.catalog).map(([k,t])=>`<label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:6px 0"><input type="checkbox" data-perm="${k}" onchange="mDeps(this)"> ${he(t)}</label>`).join('');
@@ -542,11 +566,13 @@ function mDeps(c){const imp={'studio.edit':'studio.view','link.edit':'link.view'
  if(c.checked&&imp[c.dataset.perm])document.querySelector(`#m_perms input[data-perm="${imp[c.dataset.perm]}"]`).checked=true;
  if(!c.checked)document.querySelectorAll('#m_perms input').forEach(o=>{if(imp[o.dataset.perm]===c.dataset.perm)o.checked=false})}
 function mPreset(){const p=ME.presets.find(x=>x.id===$('m_preset').value);if(p)mSet(p.perms)}
+function mTen(){const t=!!$('m_ten').value;if(t)$('m_role').value='staff';$('m_role').hidden=t;$('m_rolel').hidden=t;mRole();
+ document.querySelectorAll('#m_perms input').forEach(c=>{const ok=!t||(MU.tp||[]).includes(c.dataset.perm);c.disabled=!ok;if(!ok)c.checked=false;c.parentElement.style.opacity=ok?1:.4})}
 function mRole(){$('m_pbox').hidden=$('m_role').value==='admin'}
-function openM(id){mBuild();const u=id?MU.rows.find(x=>x.id===id):null;MU.edit=u?u.id:null;$('m_dt').textContent=u?'Edit pengguna':'Tambah pengguna';
+async function openM(id){mBuild();await ensureK();const u=id?MU.rows.find(x=>x.id===id):null;fillTen('m_ten',u?u.tenantId:'');MU.edit=u?u.id:null;$('m_dt').textContent=u?'Edit pengguna':'Tambah pengguna';
  $('m_un').value=u?u.username:'';$('m_un').disabled=!!u;$('m_nm').value=u?u.name:'';$('m_pw').value='';$('m_pwl').textContent=u?'Kata sandi baru (kosongkan jika tidak diubah)':'Kata sandi';
- $('m_role').value=u?u.role:'staff';$('m_act').checked=u?u.active:true;mSet(u?u.perms:[]);$('m_preset').value='';mRole();$('m_msg').textContent='';$('m_dlg').showModal()}
-async function saveM(){const body={name:$('m_nm').value.trim(),role:$('m_role').value,active:$('m_act').checked,perms:[...document.querySelectorAll('#m_perms input:checked')].map(c=>c.dataset.perm)};
+ $('m_role').value=u?u.role:'staff';$('m_act').checked=u?u.active:true;mSet(u?u.perms:[]);$('m_preset').value='';mRole();mTen();$('m_msg').textContent='';$('m_dlg').showModal()}
+async function saveM(){const body={tenantId:$('m_ten').value?Number($('m_ten').value):null,name:$('m_nm').value.trim(),role:$('m_role').value,active:$('m_act').checked,perms:[...document.querySelectorAll('#m_perms input:checked')].map(c=>c.dataset.perm)};
  if($('m_pw').value)body.password=$('m_pw').value;let r;
  if(MU.edit)r=await api('/admin/api/users/'+MU.edit,{method:'POST',body:JSON.stringify(body)});
  else{body.username=$('m_un').value.trim();r=await api('/admin/api/users',{method:'POST',body:JSON.stringify(body)})}
@@ -556,16 +582,38 @@ async function delM(id){const u=MU.rows.find(x=>x.id===id);if(!u||!await ask('Ha
 function openPw(){$('pw_cur').value='';$('pw_new').value='';$('pw_msg').textContent='';$('pw_dlg').showModal()}
 async function savePw(){const r=await api('/admin/api/me/password',{method:'POST',body:JSON.stringify({current:$('pw_cur').value,password:$('pw_new').value})});
  if(r.ok){$('pw_dlg').close();toast('Kata sandi diganti.')}else{$('pw_msg').textContent=r.error||'Gagal';$('pw_msg').className='bad'}}
+
+// ---- Klien ----
+async function loadK(){await ensureK();$('k_cnt').textContent=K.rows.length+' klien'+(K.unassigned?' · '+K.unassigned+' studio belum dibagikan':'');
+ $('k_t').innerHTML=K.rows.length?'<tr><th>Klien</th><th>Studio</th><th>Akun</th><th>Status</th><th></th></tr>'+K.rows.map(t=>`<tr><td><b>${he(t.name)}</b>${t.note?`<div class="muted">${he(t.note)}</div>`:''}</td><td>${t.studios}</td><td>${t.users}</td><td>${t.active?'<span class="pill ok">Aktif</span>':'<span class="pill bad">Nonaktif</span>'}</td><td><div class="acts"><button class="btn sm s" type="button" data-id="${t.id}" onclick="openK(+this.dataset.id)">Edit</button> <button class="btn sm d" type="button" data-id="${t.id}" onclick="delK(+this.dataset.id)">Hapus</button></div></td></tr>`).join(''):'<tr><td class="muted" style="padding:18px 8px">Belum ada klien. Tambah klien, lalu pindahkan studio ke klien itu dan buat akun untuknya.</td></tr>';
+ $('k_info').textContent=''}
+function openK(id){const t=id?K.rows.find(x=>x.id===id):null;K.edit=t?t.id:null;$('k_dt').textContent=t?'Edit klien':'Tambah klien';$('k_nm').value=t?t.name:'';$('k_note').value=t?t.note:'';$('k_act').checked=t?t.active:true;$('k_msg').textContent='';$('k_dlg').showModal()}
+async function saveK(){const body={name:$('k_nm').value.trim(),note:$('k_note').value.trim(),active:$('k_act').checked};
+ if(!body.name){$('k_msg').textContent='Nama klien wajib diisi';$('k_msg').className='bad';return}
+ const r=K.edit?await api('/admin/api/tenants/'+K.edit,{method:'POST',body:JSON.stringify(body)}):await api('/admin/api/tenants',{method:'POST',body:JSON.stringify(body)});
+ if(r.ok){$('k_dlg').close();toast('Klien tersimpan.');loadK()}else{$('k_msg').textContent=r.error||'Gagal menyimpan';$('k_msg').className='bad'}}
+async function delK(id){const t=K.rows.find(x=>x.id===id);if(!t||!await ask('Hapus klien “'+t.name+'”?','Hanya bisa kalau klien ini tidak punya studio dan akun lagi.'))return;
+ const r=await api('/admin/api/tenants/'+id,{method:'DELETE'});if(r.ok){toast('Klien dihapus.');loadK()}else toast(r.error||'Gagal',1)}
+// ---- Token booth ----
+async function openT(k){T.key=k;const x=sRow(k);$('t_dt').textContent='Token booth — '+(x?x.name:k);$('t_new').hidden=true;$('t_lbl').value='';$('t_msg').textContent='';await drawT();$('t_dlg').showModal()}
+const T={key:null};
+async function drawT(){const r=await api('/admin/api/studios/'+encodeURIComponent(T.key)+'/tokens');const l=(r&&r.tokens)||[];
+ $('t_t').innerHTML=l.length?'<tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th></th></tr>'+l.map(t=>`<tr><td>${he(t.label||'–')}</td><td>${fmtLast(t.createdAt)}</td><td>${t.lastUsedAt?ago(t.lastUsedAt):'<span class="muted">belum</span>'}</td><td>${t.revokedAt?'<span class="pill bad">Dicabut</span>':`<button class="btn sm d" type="button" data-id="${t.id}" onclick="revokeTok(+this.dataset.id)">Cabut</button>`}</td></tr>`).join(''):'<tr><td class="muted" style="padding:12px 8px">Belum ada token. Buat satu untuk booth ini.</td></tr>'}
+async function newTok(){const r=await api('/admin/api/studios/'+encodeURIComponent(T.key)+'/tokens',{method:'POST',body:JSON.stringify({label:$('t_lbl').value.trim()})});
+ if(r.ok){$('t_val').value=r.token;$('t_new').hidden=false;$('t_lbl').value='';$('t_msg').textContent='';drawT()}else{$('t_msg').textContent=r.error||'Gagal';$('t_msg').className='bad'}}
+async function copyTok(){try{await navigator.clipboard.writeText($('t_val').value);toast('Token disalin.')}catch{$('t_val').select();toast('Tekan Ctrl+C untuk menyalin.')}}
+async function revokeTok(id){if(!await ask('Cabut token ini?','Booth yang memakai token ini langsung ditolak sampai diberi token baru.',{ok:'Ya, cabut'}))return;
+ const r=await api('/admin/api/studios/'+encodeURIComponent(T.key)+'/tokens/'+id,{method:'DELETE'});if(r.ok){toast('Token dicabut.');drawT()}else toast(r.error||'Gagal',1)}
 function applyMe(){document.querySelectorAll('[data-need]').forEach(el=>{const n=el.dataset.need;el.classList.toggle('noperm',!(n==='@admin'?ME.admin:can(n)))});
- $('who').textContent=(ME.name||ME.username)+' · '+(ME.admin?'admin':'staf');$('pwbtn').classList.toggle('noperm',!!ME.env)}
+ $('who').textContent=(ME.name||ME.username)+' · '+(ME.admin?'admin':ME.tenantName?'klien '+ME.tenantName:'staf');$('pwbtn').classList.toggle('noperm',!!ME.env)}
 // ---- menu samping (hash: #ringkasan, #studio, #link, #penyimpanan, #pengaturan) ----
-const PAGES=['ringkasan','studio','link','penyimpanan','pengaturan','pengguna'];
+const PAGES=['ringkasan','studio','klien','link','penyimpanan','pengaturan','pengguna'];
 const pageOk=p=>{const a=document.querySelector(`#nav a[data-p="${p}"]`);return !!a&&!a.classList.contains('noperm')};
 if((location.hash||'')==='#unggah')history.replaceState(null,'','#link'),window.__openU=1; // alamat lama
 function nav(){const id=PAGES.includes((location.hash||'').slice(1))&&pageOk(location.hash.slice(1))?location.hash.slice(1):'ringkasan';
  PAGES.forEach(p=>{$('pg-'+p).className='page'+(p===id?' on':'')});
  document.querySelectorAll('#nav a').forEach(a=>{const on=a.dataset.p===id;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
- document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
+ document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='klien')loadK();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
 window.addEventListener('hashchange',nav);
 window.addEventListener('hashchange',()=>{if(location.hash==='#unggah'){history.replaceState(null,'','#link');nav();if(can('upload'))showU()}});
 $('ham').addEventListener('click',()=>document.body.classList.toggle('open'));$('scrim').addEventListener('click',()=>document.body.classList.remove('open'));

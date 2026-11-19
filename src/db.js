@@ -93,6 +93,7 @@ for (const ddl of [
   "ALTER TABLE buckets ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE studios ADD COLUMN sync_json TEXT",                       // laporan sinkron dari booth (denyut)
   "ALTER TABLE studios ADD COLUMN sync_at INTEGER",
+  "ALTER TABLE studios ADD COLUMN tenant_id INTEGER",                    // klien pemilik studio (NULL = belum dibagikan; hanya terlihat super admin)
 ]) { try { db.exec(ddl); } catch { /* sudah ada */ } }
 
 const getSetting = (k, def) => { const r = db.prepare("SELECT v FROM settings WHERE k = ?").get(k); return r ? r.v : def; };
@@ -104,5 +105,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, name TEXT NOT NULL DEFAULT '',
   pass_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'staff', perms TEXT NOT NULL DEFAULT '[]',
   active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, last_login_at INTEGER)`);
+
+// ---- Platform multi-klien ----
+// Klien (tenant) = pelanggan Anda; punya banyak studio. Akun dengan tenant_id hanya bisa melihat & mengelola studio klien itu.
+db.exec(`CREATE TABLE IF NOT EXISTS tenants (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, note TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+-- Token booth diterbitkan platform: satu per booth, hanya hash yang disimpan, bisa dicabut satu per satu.
+CREATE TABLE IF NOT EXISTS booth_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, skey TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, label TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL, last_used_at INTEGER, revoked_at INTEGER);
+CREATE INDEX IF NOT EXISTS idx_booth_tokens_skey ON booth_tokens(skey);`);
+try { db.exec("ALTER TABLE users ADD COLUMN tenant_id INTEGER"); } catch { /* sudah ada */ }
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_studios_tenant ON studios(tenant_id)"); } catch { /* abaikan */ }
 
 module.exports = { db, getSetting, setSetting, retentionDays, DATA_DIR };
