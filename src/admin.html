@@ -1,0 +1,573 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>POPSNAP Galeri — Admin</title><link rel="icon" href="/assets/icon-popsnap.ico">
+<style>
+@font-face{font-family:"Fredoka";font-weight:700;font-style:normal;font-display:swap;src:url(/assets/fredoka-700.woff2) format("woff2")}
+@font-face{font-family:"Plus Jakarta Sans";font-weight:200 800;font-style:normal;font-display:swap;src:url(/assets/jakarta.woff2) format("woff2")}
+:root{--ink:#181B23;--blue:#4082AE;--red:#E02843;--red-dark:#B81D35;--yellow:#FDB939;--cream:#FFEAC5;--muted:#5B6674;--line:#C7D0DA;--ok:#0a7d3b;--bad:#B3122B;--side:264px}
+*{box-sizing:border-box}
+html{background:#EAF1F7}
+body{margin:0;min-height:100vh;font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);font-size:15px;line-height:1.5}
+.layout{display:grid;grid-template-columns:var(--side) 1fr;min-height:100vh}
+/* ---- sidebar ---- */
+aside{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:22px 16px 18px;background:var(--blue) url(/assets/welcome-noise.webp) 0 0/402px 437px;border-right:2px solid #000;z-index:30;overflow:auto}
+.brand{display:block;margin:0 auto 4px;width:168px;height:auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))}
+.tag{margin:0 0 18px;text-align:center;color:#fff;font-style:italic;font-weight:800;font-size:13px;letter-spacing:.04em;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+nav{display:flex;flex-direction:column;gap:6px}
+nav a{position:relative;display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid transparent;border-radius:999px;color:#fff;text-decoration:none;font-weight:800;font-style:italic;font-size:15px;text-shadow:0 1px 2px rgba(0,0,0,.25);transition:background .15s}
+nav a svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+nav a:hover{background:rgba(255,255,255,.16)}
+nav a.on{background:var(--red);border-color:#000;box-shadow:1px 4px 6px rgba(0,0,0,.3);text-shadow:none;overflow:hidden}
+nav a.on::before{content:"";position:absolute;inset:0;border-radius:inherit;background:url(/assets/speck.svg) 0 0 repeat;pointer-events:none}
+nav a>*{position:relative}
+nav a:focus-visible,.btn:focus-visible,.out:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+.sidefoot{margin-top:auto;padding-top:18px}
+.who{margin:0 0 10px;color:#fff;font-size:12px;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.35);word-break:break-all}
+.out{display:flex;width:100%;align-items:center;justify-content:center;gap:8px;height:42px;border:1px solid #000;border-radius:999px;background:#fff;color:var(--ink);font:inherit;font-weight:800;font-style:italic;cursor:pointer;box-shadow:1px 3px 6px rgba(0,0,0,.3)}
+.out:hover{background:#F2F5F9}.out svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* ---- konten ---- */
+.main{min-width:0;padding:28px clamp(16px,3vw,36px) 48px}
+.topbar{display:none}
+h1{margin:0;font-family:Fredoka,"Plus Jakarta Sans",sans-serif;font-style:italic;font-weight:700;font-size:30px;line-height:1.15}
+.lead{margin:2px 0 22px;color:var(--muted)}
+.noperm{display:none!important}
+#m_dlg{overflow:auto;max-height:92vh}
+.page{display:none;max-width:1000px}.page.on{display:block}
+.card{background:#fff;border:2px solid #000;border-radius:18px;padding:18px 20px;margin:0 0 16px;box-shadow:4px 4px 0 rgba(0,0,0,.9)}
+.card>h2{margin:0 0 4px;font-family:Fredoka,"Plus Jakarta Sans",sans-serif;font-style:italic;font-weight:700;font-size:20px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:0 0 16px}
+.stat{background:var(--cream);border:2px solid #000;border-radius:18px;padding:14px 16px;box-shadow:4px 4px 0 rgba(0,0,0,.9)}
+.stat b{display:block;font-family:Fredoka,sans-serif;font-style:italic;font-size:34px;line-height:1.1}.stat span{font-size:13px;color:#5b4a1f;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}td,th{padding:9px 8px;border-bottom:1px solid #E6EBF1;text-align:left;vertical-align:top}th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.tw{overflow-x:auto}
+input,select{padding:0 12px;height:42px;border:2px solid var(--line);border-radius:12px;background:#fff;font:inherit;width:100%;color:var(--ink)}
+input:hover,select:hover{border-color:#8A97A6}input:focus,select:focus{outline:none;border-color:#000;box-shadow:0 0 0 4px #FFD23F}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+label{font-size:13px;font-weight:600;display:block;margin-bottom:4px}
+button.btn{height:40px;padding:0 18px;border-radius:999px;border:2px solid #000;background:var(--yellow);font:inherit;font-weight:800;font-style:italic;cursor:pointer;box-shadow:0 3px 0 #000;transition:transform .08s,box-shadow .08s}
+button.btn:active{transform:translateY(2px);box-shadow:0 1px 0 #000}
+button.s{background:#fff}button.d{background:#fff;color:var(--bad);border-color:var(--bad);box-shadow:0 3px 0 var(--bad)}
+button.sm{height:32px;padding:0 12px;font-size:13px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.muted{color:var(--muted);font-size:13px}
+a{color:#1b5fa8;font-weight:700}code{background:#EEF2F6;border-radius:6px;padding:1px 6px}
+.bar{height:8px;border-radius:99px;background:#E6EBF1;overflow:hidden;margin-top:4px}.bar i{display:block;height:100%;background:#1FA85A;min-width:3px;border-radius:99px;transition:width .3s}.bar i.warn{background:var(--yellow)}.bar i.full{background:var(--red)}
+.pill{display:inline-block;padding:2px 10px;border:1.5px solid currentColor;border-radius:999px;font-size:12px;font-weight:800}
+input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--red);cursor:pointer}
+#pg-link{max-width:1100px}
+.lt{display:grid;grid-template-columns:minmax(180px,1.6fr) minmax(130px,1fr) minmax(120px,.8fr) auto;gap:10px;align-items:end;margin:0 0 4px}
+.bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 0;padding:10px 12px;background:var(--cream);border:2px solid #000;border-radius:14px}
+.bulk[hidden]{display:none}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+dialog{border:2px solid #000;border-radius:18px;padding:20px 22px;max-width:min(92vw,460px);width:100%;box-shadow:6px 6px 0 rgba(0,0,0,.9)}dialog::backdrop{background:rgba(24,27,35,.55)}
+dialog h2{margin:0 0 12px;font-family:Fredoka,"Plus Jakarta Sans",sans-serif;font-style:italic;font-size:20px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+@media (max-width:640px){.lt{grid-template-columns:1fr 1fr}.lt>div:first-child{grid-column:1/-1}}
+.cb{position:relative}.cb>input{padding-right:42px}
+.cb-btn{position:absolute;right:4px;top:4px;width:34px;height:34px;border:0;background:transparent;border-radius:10px;cursor:pointer;display:grid;place-items:center;color:var(--muted)}
+.cb-btn:hover{background:#EEF2F6;color:var(--ink)}.cb-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}.cb.open .cb-btn svg{transform:rotate(180deg)}
+.cb-list{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:80;background:#fff;border:2px solid #000;border-radius:14px;box-shadow:4px 4px 0 rgba(0,0,0,.9);max-height:244px;overflow:auto;padding:6px;margin:0;list-style:none;display:none}
+.cb.open .cb-list{display:block}
+.cb-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px}
+.cb-list li small{color:var(--muted);font-weight:600;font-size:12px;white-space:nowrap}
+.cb-list li.on,.cb-list li:hover{background:var(--cream)}
+.cb-list li.cur{color:var(--red-dark)}.cb-list li.cur::after{content:"\2713";font-weight:800}
+.cb-list li.new,.cb-list li.none{color:var(--muted);cursor:default;font-weight:600}.cb-list li.new{cursor:pointer;color:var(--ink)}
+dialog{overflow:visible}
+#cf{padding:0;max-width:min(92vw,420px);width:100%;overflow:hidden}
+#cf .cfb{padding:24px 24px 6px;text-align:center}
+#cf .ico{width:56px;height:56px;margin:0 auto 12px;border-radius:50%;display:grid;place-items:center;background:#FDE3E7;border:2px solid #000;box-shadow:0 3px 0 #000}
+#cf .ico svg{width:26px;height:26px;fill:none;stroke:var(--red);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+#cf.ask .ico{background:var(--cream)}#cf.ask .ico svg{stroke:var(--ink)}
+#cf h2{margin:0 0 6px;font-size:21px}#cf p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+#cf .cfa{display:flex;gap:10px;justify-content:center;padding:18px 24px 22px}
+#cf .cfa .btn{min-width:110px}
+button.dg{background:var(--red);color:#fff}
+#toasts{position:fixed;right:16px;bottom:16px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:min(92vw,380px)}
+.toast{background:#fff;border:2px solid #000;border-radius:14px;padding:11px 14px;font-size:14px;font-weight:600;box-shadow:4px 4px 0 rgba(0,0,0,.9);animation:tin .2s ease}
+.toast.bad{border-color:var(--bad);color:var(--bad)}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.srow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 14px}.grow{flex:1}
+.schip{font-weight:800;font-size:14px;background:var(--cream);border:2px solid #000;border-radius:999px;padding:6px 14px}
+.dot{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:13px;white-space:nowrap}.dot::before{content:"";width:10px;height:10px;border-radius:50%;background:#9AA6B2;box-shadow:0 0 0 3px rgba(154,166,178,.25)}
+.dot.online{color:var(--ok)}.dot.online::before{background:#1FA85A;box-shadow:0 0 0 3px rgba(31,168,90,.25);animation:pulse 1.8s ease-in-out infinite}
+.dot.recent{color:#9a6a00}.dot.recent::before{background:var(--yellow);box-shadow:0 0 0 3px rgba(253,185,57,.3)}
+.dot.offline{color:var(--muted)}.dot.never{color:var(--muted)}.dot.never::before{background:transparent;border:2px solid #9AA6B2;box-shadow:none}
+.dot.blocked{color:var(--bad)}.dot.blocked::before{background:var(--red);box-shadow:0 0 0 3px rgba(224,40,67,.25)}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(31,168,90,0)}}@media (prefers-reduced-motion:reduce){.dot.online::before{animation:none}}
+tr.blk td{background:#FFF3F5}
+.ham{display:none}
+@media (max-width:860px){
+ .layout{display:block}
+ aside{position:fixed;left:0;top:0;bottom:0;width:min(82vw,290px);transform:translateX(-102%);transition:transform .22s ease;box-shadow:6px 0 24px rgba(0,0,0,.35)}
+ body.open aside{transform:none}
+ .scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:25;display:none}body.open .scrim{display:block}
+ .topbar{display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20;height:56px;padding:0 14px;background:var(--blue) url(/assets/welcome-noise.webp) 0 0/402px 437px;border-bottom:2px solid #000}
+ .topbar img{height:34px;width:auto}
+ .ham{display:grid;place-items:center;width:40px;height:40px;border:1px solid #000;border-radius:12px;background:#fff;cursor:pointer}
+ .ham svg{width:22px;height:22px;stroke:#000;fill:none;stroke-width:2.4;stroke-linecap:round}
+ .main{padding:20px 14px 40px}h1{font-size:26px}
+}
+@media (prefers-reduced-motion:reduce){aside,button.btn{transition:none}}
+#bform[hidden],#u_panel[hidden]{display:none}
+</style></head><body>
+<div class="topbar"><button class="ham" id="ham" aria-label="Buka menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><img src="/assets/welcome-logo.svg" alt="POPSNAP"></div>
+<div class="scrim" id="scrim"></div>
+<div class="layout">
+<aside>
+ <img class="brand" src="/assets/welcome-logo.svg" alt="POPSNAP">
+ <p class="tag">GALERI · ADMIN</p>
+ <nav id="nav">
+  <a href="#ringkasan" data-p="ringkasan"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Ringkasan</span></a>
+  <a href="#studio" data-p="studio" data-need="studio.view"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Studio</span></a>
+  <a href="#link" data-p="link" data-need="link.view"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span>Link pelanggan</span></a>
+  <a href="#penyimpanan" data-p="penyimpanan" data-need="storage.view"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 8.5a4.5 4.5 0 0 1 .5 9Z"/></svg><span>Penyimpanan cloud</span></a>
+  <a href="#pengguna" data-p="pengguna" data-need="@admin"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Pengguna</span></a>
+  <a href="#pengaturan" data-p="pengaturan" data-need="settings.edit"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Pengaturan</span></a>
+ </nav>
+ <div class="sidefoot"><p class="who" id="who"></p><button class="out" id="pwbtn" type="button" onclick="openPw()" style="margin-bottom:8px">Ganti sandi</button><button class="out" onclick="logout()"><svg viewBox="0 0 24 24"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M16 8l4 4-4 4M20 12H9"/></svg>Keluar</button></div>
+</aside>
+<div class="main">
+<section class="page" id="pg-ringkasan">
+ <h1>Ringkasan</h1><p class="lead">Kondisi galeri saat ini.</p>
+ <div class="stats">
+  <div class="stat"><b id="s_sessions">–</b><span>Sesi tersimpan</span></div>
+  <div class="stat"><b id="s_files">–</b><span>File tersimpan</span></div>
+  <div class="stat"><b id="s_pending">–</b><span>Menunggu unggah</span></div>
+  <div class="stat"><b id="s_buckets">–</b><span>Bucket aktif</span></div>
+ </div>
+ <div class="card"><h2>Alamat publik</h2><p class="muted" style="margin:0 0 6px">Dipakai booth untuk membuat link foto pelanggan.</p><div id="pub" style="font-weight:700;word-break:break-all"></div></div>
+ <div class="card" data-need="storage.view"><h2>Cek koneksi</h2><p class="muted" style="margin:0 0 10px">Menguji semua bucket (tulis, baca, hapus), kasir, dan melihat laporan sinkron tiap booth.</p>
+  <p style="margin:0 0 6px"><button class="btn" id="dg_btn" type="button" onclick="runDiag()">Jalankan cek sekarang</button> <span class="muted" id="dg_at"></span></p><div id="dg_out"></div></div>
+ <div class="card"><h2>Kapasitas penyimpanan</h2><div id="cap"></div></div>
+</section>
+<section class="page" id="pg-studio">
+ <h1>Studio</h1><p class="lead">Pantau studio yang terhubung ke galeri. Daftar dan token studio tetap dikelola di kasir; di sini kamu memantau, memberi catatan, mengatur masa simpan, menggabung nama kembar, atau memutus sambungan.</p>
+ <div class="srow"><span class="schip" id="s_cnt">–</span><span class="grow"></span>
+  <button class="btn s" type="button" onclick="loadS()">Segarkan</button><button class="btn" type="button" data-need="studio.edit" onclick="openS()">+ Tambah studio</button></div>
+ <div class="card"><div class="tw"><table id="s_t"></table></div><p class="muted" id="s_info" style="margin:10px 0 0"></p></div>
+</section>
+<dialog id="s_dlg"><h2 id="s_dt">Tambah studio</h2>
+ <label for="s_nm">Nama studio</label><input id="s_nm" maxlength="60" placeholder="mis. Studio Emma">
+ <p class="muted" id="s_nmh" style="margin:6px 0 0"></p>
+ <label for="s_note" style="margin-top:12px">Catatan (lokasi, PIC, dll.)</label><input id="s_note" maxlength="200" placeholder="mis. Cabang Bandung, PIC Rina">
+ <label for="s_ret" style="margin-top:12px">Masa simpan link (hari)</label><input id="s_ret" type="number" min="1" max="365" placeholder="kosong = ikut pengaturan umum">
+ <p class="muted" style="margin:10px 0 0">Studio dibuat otomatis saat booth pertama terhubung. Tambah manual hanya untuk menyiapkan catatan atau masa simpan lebih dulu. Kalau namanya sama dengan studio lain, keduanya digabung.</p>
+ <p style="margin:14px 0 0"><button class="btn" type="button" onclick="saveS()">Simpan</button> <button class="btn s" type="button" onclick="$('s_dlg').close()">Batal</button> <span id="s_msg"></span></p>
+</dialog>
+<section class="page" id="pg-link">
+ <h1>Link pelanggan</h1><p class="lead">Semua link foto yang sudah masuk, dari booth maupun unggah manual. Bisa dibuka, disalin, diperpanjang masa berlakunya, diganti nama studionya, atau dihapus. Kalau internet booth bermasalah, unggah hasilnya dari sini.</p>
+ <p style="margin:0 0 14px"><button class="btn" id="addu" type="button" data-need="upload" onclick="showU()">+ Unggah manual</button></p>
+ <div class="card" id="u_panel" hidden><h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px">Unggah manual <button class="btn sm s" type="button" onclick="hideU()">Tutup</button></h2><div class="muted" style="margin-top:6px">Dipakai kalau internet PC booth bermasalah. Dari PC CS (yang bisa membuka folder hasil booth lewat jaringan bersama), pilih folder hasil, lalu file diunggah lewat website ini ke cloud dan link-nya langsung hidup untuk pelanggan.
+Pilih <b>folder tanggal</b> (mis. <code>2026-10-23</code>) untuk mengunggah banyak sesi sekaligus, atau satu <b>folder sesi</b>. Sesi yang sudah terunggah dilewati otomatis.</div>
+<div class="grid" style="margin-top:10px;max-width:640px">
+<div><label>Nama studio (kalau belum terbaca otomatis)</label><input id="u_studio" list="studios" placeholder="mis. Studio Emma"><datalist id="studios"></datalist></div>
+<div style="align-self:end"><button class="btn" onclick="document.getElementById('u_dir').click()">Pilih folder…</button> <button class="btn s" onclick="document.getElementById('u_files').click()">Pilih file…</button>
+<input id="u_dir" type="file" webkitdirectory multiple hidden onchange="var l=Array.from(this.files);this.value='';startUpload(l)"><input id="u_files" type="file" multiple hidden onchange="var l=Array.from(this.files);this.value='';startUpload(l)"></div></div>
+
+<p id="u_msg" class="muted"></p><div class="tw"><table id="u_t"></table></div></div>
+ <div class="card">
+  <div class="lt">
+   <div><label for="l_q">Cari</label><input id="l_q" placeholder="Kode link atau nama studio" autocomplete="off"></div>
+   <div><label for="l_studio">Studio</label><select id="l_studio"><option value="">Semua studio</option></select></div>
+   <div><label for="l_source">Sumber</label><select id="l_source"><option value="">Semua</option><option value="booth">Dari booth</option><option value="manual">Unggah manual</option></select></div>
+   <div><label for="l_social">Izin foto</label><select id="l_social"><option value="">Semua</option><option value="sosmed">Boleh sosmed</option><option value="mading">Boleh mading</option><option value="denied">Tidak boleh</option><option value="unknown">Belum dijawab</option></select></div>
+   <div><button class="btn s" type="button" onclick="loadL(true)">Segarkan</button></div>
+  </div>
+  <div class="bulk" id="l_bulk" data-need="link.edit" hidden><b id="l_sel">0 dipilih</b>
+   <button class="btn sm s" type="button" onclick="bulkExt(7)">Perpanjang +7 hari</button>
+   <button class="btn sm s" type="button" onclick="bulkExt(30)">+30 hari</button>
+   <button class="btn sm d" type="button" onclick="bulkDel()">Hapus terpilih</button>
+   <button class="btn sm s" type="button" onclick="selAll(false)">Batal pilih</button></div>
+  <div class="tw"><table id="l_t"></table></div>
+  <p class="muted" id="l_info" style="margin:10px 0 0"></p>
+  <p class="muted" id="l_live" style="margin:4px 0 0;font-size:12px" aria-live="off"></p>
+  <p style="margin:10px 0 0"><button class="btn s" id="l_more" type="button" onclick="loadL(false)" hidden>Muat lagi</button></p>
+ </div>
+</section>
+<dialog id="cf" aria-labelledby="cf_t"><div class="cfb"><div class="ico"><svg viewBox="0 0 24 24" id="cf_i"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3"/></svg></div><h2 id="cf_t"></h2><p id="cf_p"></p></div><div class="cfa"><button class="btn s" type="button" id="cf_no">Batal</button><button class="btn dg" type="button" id="cf_ok">Hapus</button></div></dialog>
+<div id="toasts" aria-live="polite"></div>
+<dialog id="l_dlg"><h2 id="l_dt">Atur link</h2>
+ <label for="l_exp">Berlaku sampai</label><input id="l_exp" type="datetime-local">
+ <div class="chips"><span class="muted" style="align-self:center">Dari sekarang:</span>
+  <button class="btn sm s" type="button" onclick="setExp(1)">+1 hari</button><button class="btn sm s" type="button" onclick="setExp(7)">+7 hari</button><button class="btn sm s" type="button" onclick="setExp(30)">+30 hari</button><button class="btn sm s" type="button" onclick="setExp(90)">+90 hari</button></div>
+ <label for="l_nm" style="margin-top:14px">Nama studio</label><input id="l_nm" maxlength="60">
+ <p class="muted" style="margin:10px 0 0">Mengubah nama studio hanya mengganti label di galeri ini, tidak memengaruhi booth.</p>
+ <p style="margin:14px 0 0"><button class="btn" type="button" onclick="saveL()">Simpan</button> <button class="btn s" type="button" onclick="$('l_dlg').close()">Batal</button> <span id="l_msg"></span></p>
+</dialog>
+<section class="page" id="pg-penyimpanan">
+ <h1>Penyimpanan cloud</h1><p class="lead">S3 / Cloudflare R2 / Backblaze B2. Sesi baru ditaruh di bucket dengan nomor prioritas terkecil yang masih muat; sama prioritas = dibagi rata. Kalau satu penuh atau gagal, otomatis pindah ke yang lain.</p>
+ <p style="margin:0 0 14px"><button class="btn" id="addb" type="button" data-need="storage.edit" onclick="showF()">+ Tambah bucket</button></p>
+ <div class="card" id="bform" hidden><h2 id="ftitle">Tambah bucket</h2>
+<div class="grid" style="margin-top:10px">
+<div><label>Jenis penyimpanan</label><select id="f_kind" onchange="pickKind()"><option value="r2">Cloudflare R2</option><option value="b2">Backblaze B2</option><option value="s3">S3 lain (Wasabi, MinIO, dll.)</option></select></div>
+<div><label>Nama</label><input id="f_name" placeholder="R2 akun 1"></div>
+<div><label>Endpoint</label><input id="f_endpoint" placeholder="https://xxxx.r2.cloudflarestorage.com"></div>
+<div><label>Region</label><input id="f_region" value="auto" placeholder="auto"></div>
+<div><label>Nama bucket</label><input id="f_bucket"></div>
+<div><label>Access key ID</label><input id="f_accessKey"></div>
+<div><label>Secret access key <span class="muted" id="f_sec"></span></label><input id="f_secretKey" type="password" autocomplete="new-password"></div>
+<div><label>Prioritas (kecil = dipakai dulu)</label><input id="f_priority" type="number" value="10"></div>
+<div><label>Batas kapasitas GB (0 = tanpa batas)</label><input id="f_quotaGB" type="number" value="10"></div>
+<div><label>Aktif</label><select id="f_enabled"><option value="1">Ya</option><option value="0">Tidak</option></select></div>
+</div><p class="muted" id="f_hint">R2: buat bucket PRIVATE + API token "Object Read & Write". Endpoint ada di halaman R2 (S3 API). Region: auto.</p><p style="margin:14px 0 0"><button class="btn" onclick="saveB()">Simpan bucket</button> <button class="btn s" onclick="hideF()">Batal</button> <span id="fmsg"></span></p></div>
+ <div class="card"><h2>Daftar bucket</h2><div class="tw"><table id="bt"></table></div></div>
+</section>
+<section class="page" id="pg-pengguna">
+ <h1>Pengguna</h1><p class="lead">Buat akun untuk tim dan atur apa saja yang boleh dilakukan tiap orang. Akun admin punya akses penuh. Perubahan hak langsung berlaku tanpa login ulang.</p>
+ <div class="srow"><span class="schip" id="m_cnt">–</span><span class="grow"></span><button class="btn" type="button" onclick="openM()">+ Tambah pengguna</button></div>
+ <div class="card"><div class="tw"><table id="m_t"></table></div><p class="muted" id="m_info" style="margin:10px 0 0"></p></div>
+</section>
+<dialog id="m_dlg"><h2 id="m_dt">Tambah pengguna</h2>
+ <label for="m_un">Username</label><input id="m_un" maxlength="30" autocomplete="off" placeholder="mis. rina">
+ <label for="m_nm" style="margin-top:12px">Nama</label><input id="m_nm" maxlength="60" placeholder="mis. Rina (CS)">
+ <label for="m_pw" style="margin-top:12px" id="m_pwl">Kata sandi</label><input id="m_pw" type="password" autocomplete="new-password" placeholder="minimal 8 karakter">
+ <label for="m_role" style="margin-top:12px">Peran</label><select id="m_role" onchange="mRole()"><option value="staff">Staf (pilih hak akses)</option><option value="admin">Admin (akses penuh, kelola pengguna)</option></select>
+ <div id="m_pbox"><label for="m_preset" style="margin-top:12px">Isi cepat dari paket</label><select id="m_preset" onchange="mPreset()"></select>
+  <div id="m_perms" style="margin-top:10px"></div></div>
+ <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:600"><input type="checkbox" id="m_act"> Akun aktif (boleh masuk)</label>
+ <p style="margin:14px 0 0"><button class="btn" type="button" onclick="saveM()">Simpan</button> <button class="btn s" type="button" onclick="$('m_dlg').close()">Batal</button> <span id="m_msg"></span></p>
+</dialog>
+<dialog id="pw_dlg"><h2>Ganti kata sandi</h2>
+ <label for="pw_cur">Sandi saat ini</label><input id="pw_cur" type="password" autocomplete="current-password">
+ <label for="pw_new" style="margin-top:12px">Sandi baru (min. 8 karakter)</label><input id="pw_new" type="password" autocomplete="new-password">
+ <p style="margin:14px 0 0"><button class="btn" type="button" onclick="savePw()">Simpan</button> <button class="btn s" type="button" onclick="$('pw_dlg').close()">Batal</button> <span id="pw_msg"></span></p>
+</dialog>
+<section class="page" id="pg-pengaturan">
+ <h1>Pengaturan</h1><p class="lead">Aturan umum galeri.</p>
+ <div class="card"><h2>Masa simpan file</h2>
+  <div class="grid" style="margin-top:8px;max-width:440px"><div><label for="ret">Hari (file dihapus otomatis setelahnya)</label><input id="ret" type="number" min="1" max="365"></div><div style="align-self:end"><button class="btn" onclick="saveRet()">Simpan</button></div></div>
+  <p class="muted" style="margin:10px 0 0">Berlaku untuk sesi BARU. Rekomendasi: 7 atau 15 hari.</p></div>
+ <div class="card"><h2>Tombol "All … (zip)" di halaman pelanggan</h2>
+  <div style="margin-top:8px;max-width:520px"><select id="zip" onchange="saveZip()"><option value="1">ZIP — satu file berisi semua foto</option><option value="0">Tanpa ZIP — file diunduh satu per satu</option><option value="2">Keduanya — tombol ZIP dan tombol "Unduh semua file"</option></select></div>
+  <p class="muted" style="margin:10px 0 0">ZIP praktis tapi di sebagian HP (terutama iPhone) harus dibuka dulu. Tanpa ZIP, foto langsung bisa disimpan ke galeri tapi browser mungkin meminta izin unduhan berganda. "Keduanya" menampilkan dua tombol: ZIP, dan "Unduh semua file" yang mengunduh langsung dari cloud (tidak lewat server). Tombol unduh per foto selalu ada.</p></div>
+</section>
+</div></div>
+<script>
+let editId=null;const $=i=>document.getElementById(i);
+let ME={perms:[],admin:false,catalog:{},presets:[]};const can=p=>ME.admin||ME.perms.includes(p);
+const api=async(u,o)=>{const r=await fetch(u,{headers:{'Content-Type':'application/json'},...o});if(r.status===401){location.reload();return {}}const d=await r.json();if(r.status===403){toast(d.error||'Tidak punya hak.',1)}return d};
+async function logout(){await fetch('/admin/api/logout',{method:'POST'});location.replace('/admin')}
+async function load(){const s=await api('/admin/api/state');$('ret').value=s.retentionDays;$('zip').value=s.zipMode||(s.zipEnabled===false?'0':'1');
+$('s_sessions').textContent=s.stats.sessions;$('s_files').textContent=s.stats.files;$('s_pending').textContent=s.stats.pending;$('s_buckets').textContent=s.buckets.filter(b=>b.enabled).length;
+$('pub').innerHTML=s.publicUrl?`<a href="${s.publicUrl}" target="_blank" rel="noopener">${s.publicUrl}</a>`:'<span class="bad">(PUBLIC_URL belum diisi di .env!)</span>';
+$('cap').innerHTML=s.buckets.length?s.buckets.map(b=>{const pct=b.quotaGB?Math.min(100,Math.round(b.usedGB/b.quotaGB*100)):0;const left=b.quotaGB?Math.max(0,b.quotaGB-b.usedGB):0;const lv=!b.quotaGB?'':(left<=1||pct>=95)?'full':(left<=3||pct>=80)?'warn':'';return `<div style="margin:10px 0"><b>${he(b.name)}</b> <span class="muted">${b.usedGB} GB${b.quotaGB?' / '+b.quotaGB+' GB':' (tanpa batas)'}</span> <span class="pill ${b.enabled?'ok':'bad'}">${b.enabled?'Aktif':'Nonaktif'}</span>${healthPill(b)}${b.quotaGB?`<div class="bar" title="Sisa ${Math.round(left*100)/100} GB"><i class="${lv}" style="width:${pct}%"></i></div>`:''}</div>`}).join(''):'<p class="muted">Belum ada bucket. Tambahkan di menu Penyimpanan cloud.</p>';
+window.BKS={};s.buckets.forEach(b=>{BKS[b.id]=b});$('bt').innerHTML='<tr><th>Nama</th><th>Bucket</th><th>Prioritas</th><th>Terpakai</th><th>Status</th><th></th></tr>'+s.buckets.map(b=>`<tr><td>${he(b.name)}</td><td>${he(b.bucket)}<div class="muted">${he(b.endpoint)}</div></td><td>${b.priority}</td><td>${b.usedGB} GB${b.quotaGB?' / '+b.quotaGB+' GB':''}</td><td class="${b.enabled?'ok':'bad'}"><b>${b.enabled?'Aktif':'Nonaktif'}</b>${healthChip(b)}<div id="t${b.id}" class="muted"></div></td><td>${can('storage.edit')?`<button class="btn s sm" onclick="editB(BKS[${b.id}])">Ubah</button> <button class="btn s sm" onclick="testB(${b.id})">Tes</button> <button class="btn s sm" onclick="scanB(${b.id})">Pindai</button> <button class="btn d sm" onclick="delB(${b.id})">Hapus</button>`:''}</td></tr>`).join('')||'<tr><td class="muted">Belum ada bucket. Tambahkan lewat formulir di bawah.</td></tr>';
+knownStudios=s.studios;if(typeof fillStudios==='function')fillStudios();}
+async function saveZip(){await api('/admin/api/settings',{method:'POST',body:JSON.stringify({zipEnabled:$('zip').value})});load()}
+async function saveRet(){await api('/admin/api/settings',{method:'POST',body:JSON.stringify({retentionDays:$('ret').value})});load()}
+function editB(b){editId=b.id;$('f_kind').value=/backblazeb2\.com/.test(b.endpoint)?'b2':/r2\.cloudflarestorage\.com/.test(b.endpoint)?'r2':'s3';$('ftitle').textContent='Ubah bucket';for(const k of['name','endpoint','region','bucket','accessKey','priority','quotaGB'])$('f_'+k).value=b[k];$('f_enabled').value=b.enabled?'1':'0';$('f_secretKey').value='';$('f_sec').textContent='(kosongkan = tidak diubah)';$('bform').hidden=false;$('addb').hidden=true;$('bform').scrollIntoView({behavior:'smooth',block:'start'})}
+function pickKind(){const k=$('f_kind').value;
+ $('f_endpoint').placeholder=k==='r2'?'https://<ACCOUNT_ID>.r2.cloudflarestorage.com':k==='b2'?'https://s3.us-west-004.backblazeb2.com':'https://s3.contoh.com';
+ $('f_region').value=k==='r2'?'auto':k==='b2'?'':$('f_region').value;$('f_region').placeholder=k==='b2'?'kosong = otomatis dari endpoint':'auto';
+ $('f_accessKey').placeholder=k==='b2'?'keyID (Application Key ID)':'Access key ID';$('f_secretKey').placeholder=k==='b2'?'applicationKey':'Secret access key';
+ $('f_hint').textContent=k==='r2'?'R2: buat bucket PRIVATE + API token "Object Read & Write". Endpoint ada di halaman R2 (S3 API). Region: auto.':k==='b2'?'Backblaze: buat bucket PRIVATE + Application Key (izin Read and Write, dibatasi ke bucket itu). Endpoint = "S3 Endpoint" di detail bucket (mis. s3.us-west-004.backblazeb2.com). Access key = keyID, secret = applicationKey (hanya tampil sekali).':'Pakai alamat S3 dan key dari penyedia Anda.'}
+function showF(){resetF();$('bform').hidden=false;$('addb').hidden=true;$('f_name').focus();$('bform').scrollIntoView({behavior:'smooth',block:'nearest'})}
+function hideF(){resetF();$('bform').hidden=true;$('addb').hidden=false}
+function resetF(){editId=null;$('ftitle').textContent='Tambah bucket';for(const k of['name','endpoint','bucket','accessKey','secretKey'])$('f_'+k).value='';$('f_region').value='auto';$('f_priority').value=10;$('f_quotaGB').value=10;$('f_enabled').value='1';$('f_sec').textContent='';$('fmsg').textContent=''}
+async function saveB(){const b={id:editId};for(const k of['name','endpoint','region','bucket','accessKey','secretKey','priority','quotaGB'])b[k]=$('f_'+k).value;b.enabled=$('f_enabled').value==='1';const r=await api('/admin/api/buckets',{method:'POST',body:JSON.stringify(b)});if(r.ok&&r.test&&!r.test.ok){$('fmsg').textContent='Tersimpan, tapi tes GAGAL: '+r.test.error+' Bucket ini dilewati sampai tesnya berhasil.';$('fmsg').className='bad';toast('Bucket tersimpan, tapi tes gagal: '+r.test.error,1);load();return}
+ $('fmsg').textContent=r.ok?'Tersimpan dan tes tulis/baca berhasil.':r.error;$('fmsg').className=r.ok?'ok':'bad';if(r.ok){toast('Bucket tersimpan, tes berhasil.');resetF();load();setTimeout(hideF,1200)}}
+async function testB(id){$('t'+id).textContent='menguji…';const r=await api('/admin/api/buckets/'+id+'/test',{method:'POST'});$('t'+id).textContent=r.ok?'✔ tulis & baca berhasil'+(r.ms?' ('+r.ms+' ms)':''):'✘ '+r.error;$('t'+id).className=r.ok?'ok':'bad';load()}
+async function scanB(id,del){const el=$('t'+id);el.className='muted';el.textContent='memindai isi bucket…';const r=await api('/admin/api/buckets/'+id+'/scan',{method:'POST',body:JSON.stringify({delete:!!del})});
+ if(!r.ok){el.className='bad';el.textContent='✘ '+r.error;return}
+ const o=r.orphans,m=r.missing;let t=r.listed+' objek di cloud, '+r.tracked+' tercatat. Sisa tak terpakai: '+o.count+' ('+o.mb+' MB). File tercatat tapi hilang di cloud: '+m.count+'.';
+ if(r.truncated)t+=' (pemindaian dibatasi 300 halaman)';if(r.otherObjects)t+=' '+r.otherObjects+' objek lain bukan milik galeri (tidak disentuh).';if(del)t+=' Dihapus: '+r.deleted+(r.tooYoung?', ditunda (<24 jam): '+r.tooYoung:'')+(r.failed?', gagal: '+r.failed:'')+'.';
+ if(o.sample.length)t+='\nContoh sisa: '+o.sample.slice(0,5).join(', ');if(m.sample.length)t+='\nContoh hilang: '+m.sample.slice(0,5).join(', ');
+ el.style.whiteSpace='pre-wrap';el.className=(o.count||m.count)?'bad':'ok';el.textContent=t;
+ if(!del&&o.count&&await ask('Hapus '+o.count+' sisa file dari cloud?','File yang tidak ada di catatan galeri dan berumur lebih dari 24 jam akan dihapus permanen dari bucket. Objek lain di bucket tidak disentuh.',{ok:'Hapus sisa'}))scanB(id,true)}
+async function delB(id){if(!await ask('Hapus bucket ini?','Jika bucket sudah berisi file, bucket hanya dinonaktifkan (file tidak dihapus).',{ok:'Hapus bucket'}))return;await api('/admin/api/buckets/'+id,{method:'DELETE'});load()}
+
+let knownStudios=[];
+const rnd=()=>{const a=new Uint8Array(10);crypto.getRandomValues(a);return Array.from(a,x=>'23456789ABCDEFGHJKLMNPQRSTUVWXYZ'[x%32]).join('')};
+// Token TETAP untuk folder tanpa popsnap-share.json: folder yang sama dipilih lagi = link yang sama (file yang sudah ada dilewati), bukan link kembar.
+const _h=(s,seed)=>{let a=0xdeadbeef^seed,b=0x41c6ce57^seed;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,2654435761);b=Math.imul(b^c,1597334677)}a=Math.imul(a^(a>>>16),2246822507)^Math.imul(b^(b>>>13),3266489909);b=Math.imul(b^(b>>>16),2246822507)^Math.imul(a^(a>>>13),3266489909);return[a>>>0,b>>>0]};
+const txFromLabel=l=>{const m=String(l||'').toUpperCase().match(/^PB-[A-Z0-9]{3,8}-\d{6}-\d{3,6}$/);return m?m[0]:undefined}; // nama folder arsip booth = nomor transaksi
+const detTok=s=>{const A='23456789ABCDEFGHJKLMNPQRSTUVWXYZ',n=[..._h(s,1),..._h(s,7)];let o='';for(let i=0;i<10;i++)o+=A[(n[i%4]>>>(Math.floor(i/4)*5))&31];return o};
+function mapName(rel){ // rel = path di dalam folder sesi
+  const p=rel.split('/'),n=p[p.length-1],m=/^(.*)\.([A-Za-z0-9]+)$/.exec(n);if(!m)return null;const base=m[1].toLowerCase(),ext=m[2].toLowerCase();
+  if(p.length===1){const k={final:['final','final'],boomerang:['final','boomerang'],session:['gif','gif'],video:['video','video'],live:['live','live'],gifplain:['gifplain','gifplain']}[base];return k?{fid:k[0],kind:k[1],idx:0,ext}:null}
+  if(p.length===2&&p[0]==='raw'){const r=/^shot-(\d+)$/.exec(base);return r?{fid:'raw'+r[1],kind:'raw',idx:+r[1],ext}:null}
+  if(p.length===2&&p[0]==='clips'){const r=/^clip-(\d+)$/.exec(base);return r?{fid:'clip'+r[1],kind:'clip',idx:+r[1],ext}:null}
+  return null}
+var upBusy=false;
+async function startUpload(list){
+  if(upBusy){$('u_msg').textContent='Masih mengunggah folder sebelumnya. Tunggu selesai, lalu pilih folder berikutnya.';$('u_msg').className='bad';return}
+  upBusy=true;try{await startUpload2(list)}finally{upBusy=false}}
+async function startUpload2(list){
+  const files=Array.from(list);if(!files.length)return;$('u_msg').textContent='Membaca folder…';$('u_msg').className='muted';
+  const rel=f=>f.webkitRelativePath||f.name;
+  // Folder salinan / penanda booth (_BOLEH-SOSMED, _BOLEH-MADING, _BOLEH-KEDUANYA, _TIDAK-BOLEH, _BELUM-DIJAWAB) isi & token-nya sama dengan folder aslinya, jadi dilewati (kalau tidak: sesi terhitung 2-3x dan izin foto bisa tertimpa salinan lama).
+  files.splice(0,files.length,...files.filter(f=>!rel(f).split('/').some(seg=>/^_(BOLEH-|TIDAK-BOLEH|BELUM-DIJAWAB)/i.test(seg))));
+  // 1) cari berkas popsnap-share.json -> folder sesi
+  const sessions=new Map();
+  for(const f of files){if(f.name==='popsnap-share.json'){try{const j=JSON.parse(await f.text());if(j&&/^[A-Za-z0-9_-]{10,40}$/.test(j.token)){const parts=rel(f).split('/');parts.pop();sessions.set(parts.join('/'),{token:j.token,txNo:j.txNo||txFromLabel(parts[parts.length-1]),social:j.social,mode:j.mode||'photo',code:j.studioCode||'',studioName:j.studioName||'',label:parts[parts.length-1]||j.token,files:[]})}}catch(e){}}}
+  const seenTok=new Set();for(const [dir,s] of [...sessions]){if(seenTok.has(s.token))sessions.delete(dir);else seenTok.add(s.token)} // token kembar (salinan folder lain): ambil satu saja
+  const orphan=new Map();
+  for(const f of files){
+    const parts=rel(f).split('/');let hit=null;
+    for(const [dir,s] of sessions){if(dir===''||rel(f).startsWith(dir+'/')){if(!hit||dir.length>hit.dir.length)hit={dir,s}}}
+    if(hit){const m=mapName(rel(f).slice(hit.dir?hit.dir.length+1:0));if(m)hit.s.files.push({...m,size:f.size,file:f})}
+    else if(parts.length>=2){ // folder sesi tanpa popsnap-share.json: token baru (link baru, bagikan ke pelanggan)
+      const dir=parts.slice(0,-1).join('/');const root=/^(raw|clips)$/.test(parts[parts.length-2])?parts.slice(0,-2).join('/'):dir;
+      if(!orphan.has(root))orphan.set(root,{token:rnd(),txNo:txFromLabel(root.split('/').pop()),mode:'photo',code:'',studioName:'',label:root.split('/').pop()||'sesi',files:[],isNew:true});
+      const m=mapName(rel(f).slice(root?root.length+1:0));if(m)orphan.get(root).files.push({...m,size:f.size,file:f})}
+  }
+  for(const s of orphan.values())s.token=detTok(s.label+'|'+s.files.map(f=>f.fid+':'+f.size).sort().join(','));
+  const all=[...sessions.values(),...orphan.values()].filter(s=>s.files.length);
+  if(!all.length){$('u_msg').textContent='Tidak ada file hasil yang dikenali. Pilih folder sesi / folder tanggal dari output booth.';$('u_msg').className='bad';return}
+  const typed=$('u_studio').value.trim();
+  const rows=all.map(s=>({s,studio:s.studioName||(knownStudios.find(k=>k.code&&k.code.toUpperCase()===String(s.code).toUpperCase())||{}).studio||typed,state:'antre',done:0,link:null}));
+  if(rows.some(r=>!r.studio)){$('u_msg').textContent='Isi "Nama studio" dulu (studio tidak bisa dikenali dari folder).';$('u_msg').className='bad';return}
+  render(rows);$('u_msg').textContent=`${rows.length} sesi, ${rows.reduce((a,r)=>a+r.s.files.length,0)} file. Jangan tutup halaman ini sampai selesai.`;
+  for(const r of rows){
+    try{
+      r.state='mendaftar';render(rows);
+      const pr=await api('/admin/api/upload/prepare',{method:'POST',body:JSON.stringify({token:r.s.token,txNo:r.s.txNo||undefined,studio:r.studio,studioCode:r.s.code,mode:r.s.mode,social:r.s.social,files:r.s.files.map(({fid,kind,idx,ext,size})=>({fid,kind,idx,ext,size}))})});
+      if(pr.error)throw new Error(pr.error);
+      r.link=pr.shareUrl;const byFid=new Map(r.s.files.map(f=>[f.fid,f]));r.total=pr.uploads.length;
+      // 4 file sekaligus (dulu satu per satu = lambat); satu file gagal tidak menghentikan yang lain.
+      const queue=[...pr.uploads],failed=[];
+      const worker=async()=>{while(queue.length){
+        const u=queue.shift(),f=byFid.get(u.fid);let ok=false,err='';
+        for(let t=0;t<3&&!ok;t++){try{const res=await fetch(u.path,{method:'PUT',headers:{'Content-Type':u.contentType},body:f.file});const j=await res.json().catch(()=>({}));ok=res.ok&&j.ok;err=j.error||('HTTP '+res.status)}catch(e){err='jaringan terputus'}if(!ok)await new Promise(z=>setTimeout(z,1500*(t+1)))}
+        if(ok)r.done++;else failed.push(f.fid+': '+err);
+        r.state=`mengunggah ${r.done}/${r.total}`+(failed.length?` · ${failed.length} gagal`:'');render(rows)}};
+      await Promise.all(Array.from({length:Math.min(4,queue.length)},worker));
+      if(failed.length)throw new Error(`${failed.length} file gagal (${failed[0]}). Pilih folder yang sama lagi untuk melanjutkan, yang sudah terunggah dilewati.`);
+      r.state=pr.uploads.length?'✔ selesai':'✔ sudah lengkap';
+    }catch(e){r.state='✘ '+e.message}
+    render(rows)}
+  $('u_msg').textContent='Selesai. Link di bawah sudah bisa dibuka pelanggan.';$('u_msg').className='ok';load();if(typeof loadL==='function')loadL(true)}
+function render(rows){$('u_t').innerHTML='<tr><th>Sesi</th><th>File</th><th>Status</th><th>Link</th></tr>'+rows.map(r=>`<tr><td>${r.s.label}${r.s.isNew?'<div class="muted">link baru</div>':''}</td><td>${r.s.files.length}</td><td class="${r.state.startsWith('✘')?'bad':r.state.startsWith('✔')?'ok':''}">${r.state}</td><td>${r.link?`<a href="${r.link}" target="_blank">${r.link}</a> <button class="btn s sm" onclick="navigator.clipboard.writeText('${r.link}')">Salin</button>`:''}</td></tr>`).join('')}
+
+
+
+// ---- dialog konfirmasi & pemberitahuan bertema (pengganti confirm()/alert() bawaan browser) ----
+function ask(title,text,{ok='Hapus',danger=true}={}){return new Promise(res=>{const d=$('cf');$('cf_t').textContent=title;$('cf_p').textContent=text;$('cf_ok').textContent=ok;$('cf_ok').className='btn '+(danger?'dg':'');d.className=danger?'':'ask';
+ let done=false;const fin=v=>{if(done)return;done=true;d.close();res(v)};
+ $('cf_ok').onclick=()=>fin(true);$('cf_no').onclick=()=>fin(false);d.oncancel=e=>{e.preventDefault();fin(false)};d.onclick=e=>{if(e.target===d)fin(false)};
+ d.showModal();$('cf_no').focus()})}
+function toast(msg,bad){const t=document.createElement('div');t.className='toast'+(bad?' bad':'');t.textContent=msg;$('toasts').appendChild(t);setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),300)},bad?6000:4500)}
+
+// ---- Link pelanggan ----
+const he=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let L={rows:[],total:0,pub:'',sel:new Set(),editTok:null},lTimer=null;
+const fmtBytes=n=>n>=1e9?(n/1e9).toFixed(2)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?Math.round(n/1e3)+' KB':n+' B';
+const fmtDt=t=>new Date(t).toLocaleString('id-ID',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+const fmtTok=t=>/^[A-Z0-9]{10}$/.test(t)?t.slice(0,4)+' '+t.slice(4,8)+' '+t.slice(8):t;
+const leftTxt=ms=>{const d=(ms-Date.now())/864e5;return d>=1?'sisa '+Math.floor(d)+' hari':d>0?'sisa '+Math.max(1,Math.round(d*24))+' jam':'kedaluwarsa'};
+const linkOf=t=>(L.pub||location.origin)+'/s/'+t;
+const SOC={3:['Sosmed + Mading','ok'],1:['Sosmed','ok'],2:['Mading','ok'],0:['Tidak boleh','bad']};
+const socBadge=v=>v==null?'<span class="muted">Belum dijawab</span>':`<b class="${SOC[v][1]}">${SOC[v][0]}</b>`;
+async function loadL(reset){
+ if(reset){L.rows=[];L.sel.clear()}
+ const q=new URLSearchParams({q:$('l_q').value.trim(),studio:$('l_studio').value,source:$('l_source').value,social:$('l_social').value,limit:30,offset:L.rows.length});
+ const r=await api('/admin/api/sessions?'+q);if(!r||!r.sessions)return;
+ L.total=r.total;L.pub=r.publicUrl||'';L.rows=L.rows.concat(r.sessions);drawL()}
+function drawL(){
+ const rows=L.rows;
+ $('l_t').innerHTML=rows.length?'<tr><th><input type="checkbox" id="l_all" aria-label="Pilih semua" onchange="selAll(this.checked)"></th><th>Kode</th><th>Studio</th><th>File</th><th>Izin foto</th><th>Dibuat</th><th>Berlaku sampai</th><th></th></tr>'+rows.map(x=>`<tr><td><input type="checkbox" aria-label="Pilih ${he(x.token)}" ${L.sel.has(x.token)?'checked':''} onchange="selOne('${x.token}',this.checked)"></td>
+  <td><span class="code">${he(fmtTok(x.token))}</span>${x.txNo?`<div class="muted" style="font-family:monospace">${he(x.txNo)}</div>`:''}<div class="muted">${x.manual?'Unggah manual':'Dari booth'}</div>${x.dupTx?`<div class="bad" title="Ada ${x.dupTx} link lain dengan nomor transaksi yang sama (mis. unggah manual terlanjur membuat link baru). Cari nomor ini untuk melihat semuanya.">⚠ kembar ${x.dupTx}</div>`:''}</td>
+  <td>${he(x.studio)}${x.studioCode?`<div class="muted">${he(x.studioCode)}</div>`:''}</td>
+  <td>${x.files} file<div class="muted">${fmtBytes(x.bytes)}${x.pending?` · ${x.pending} menunggu`:''}</div></td>
+  <td>${socBadge(x.social)}</td>
+  <td>${fmtDt(x.createdAt)}</td>
+  <td>${fmtDt(x.expiresAt)}<div class="${x.expiresAt-Date.now()<864e5?'bad':'muted'}">${leftTxt(x.expiresAt)}</div></td>
+  <td><div class="acts"><a class="btn sm s" style="display:inline-flex;align-items:center;text-decoration:none;color:inherit;height:32px;padding:0 12px;border-radius:999px;border:2px solid #000;font-size:13px;font-weight:800;font-style:italic;background:#fff" href="${linkOf(x.token)}" target="_blank" rel="noopener">Buka</a>
+   <button class="btn sm s" type="button" onclick="copyL('${x.token}',this)">Salin</button>
+   ${can('link.edit')?`<button class="btn sm s" type="button" onclick="openL('${x.token}')">Atur</button>
+   <button class="btn sm d" type="button" onclick="delL('${x.token}')">Hapus</button>`:''}</div></td></tr>`).join(''):'<tr><td class="muted" style="padding:18px 8px">Tidak ada link yang cocok.</td></tr>';
+ $('l_info').textContent=L.total?`Menampilkan ${rows.length} dari ${L.total} link.`:'';
+ $('l_more').hidden=rows.length>=L.total;
+ const all=$('l_all');if(all)all.checked=rows.length>0&&rows.every(x=>L.sel.has(x.token));
+ $('l_bulk').hidden=!L.sel.size;$('l_sel').textContent=L.sel.size+' dipilih'}
+function selOne(t,on){on?L.sel.add(t):L.sel.delete(t);drawL()}
+function selAll(on){L.rows.forEach(x=>on?L.sel.add(x.token):L.sel.delete(x.token));drawL()}
+async function copyL(t,b){const u=linkOf(t);try{await navigator.clipboard.writeText(u)}catch{const i=document.createElement('input');i.value=u;document.body.appendChild(i);i.select();document.execCommand('copy');i.remove()}const o=b.textContent;b.textContent='Tersalin';setTimeout(()=>b.textContent=o,1200)}
+const toLocalInput=t=>{const d=new Date(t-new Date(t).getTimezoneOffset()*6e4);return d.toISOString().slice(0,16)};
+function openL(t){const x=L.rows.find(r=>r.token===t);if(!x)return;L.editTok=t;$('l_dt').textContent='Atur link '+fmtTok(t)+(x.txNo?' · '+x.txNo:'');$('l_exp').value=toLocalInput(x.expiresAt);$('l_nm').value=x.studio;$('l_msg').textContent='';$('l_dlg').showModal()}
+function setExp(d){$('l_exp').value=toLocalInput(Date.now()+d*864e5)}
+async function saveL(){const x=L.rows.find(r=>r.token===L.editTok);if(!x)return;const body={};const exp=new Date($('l_exp').value).getTime();
+ if(Number.isFinite(exp)&&Math.abs(exp-x.expiresAt)>=60000)body.expiresAt=exp;const nm=$('l_nm').value.trim();if(nm!==x.studio)body.studio=nm;
+ if(!Object.keys(body).length){$('l_dlg').close();return}
+ const r=await api('/admin/api/sessions/'+L.editTok,{method:'POST',body:JSON.stringify(body)});
+ if(r.ok){$('l_dlg').close();const keep=L.rows.length;L.rows=[];L.sel.clear();await loadMore(keep);load()}else{$('l_msg').textContent=r.error||'Gagal menyimpan';$('l_msg').className='bad'}}
+async function loadMore(n){const q=new URLSearchParams({q:$('l_q').value.trim(),studio:$('l_studio').value,source:$('l_source').value,social:$('l_social').value,limit:Math.min(100,Math.max(30,n)),offset:0});const r=await api('/admin/api/sessions?'+q);if(r&&r.sessions){L.total=r.total;L.pub=r.publicUrl||'';L.rows=r.sessions;drawL()}}
+async function delL(t){if(!await ask('Hapus link '+fmtTok(t)+'?','Halaman langsung tidak bisa dibuka dan semua file di cloud dihapus. Tindakan ini tidak bisa dibatalkan.',{ok:'Ya, hapus'}))return;
+ const r=await api('/admin/api/sessions/'+t,{method:'DELETE'});if(!r.ok)return toast(r.error||'Gagal menghapus',1);toast(r.deleted?'Link dihapus.':'Link sudah mati. Sebagian file di cloud belum terhapus, akan dibersihkan otomatis.');L.sel.delete(t);await loadMore(L.rows.length);load()}
+async function bulkDel(){const tk=[...L.sel];if(!tk.length||!await ask('Hapus '+tk.length+' link terpilih?','Semua file di cloud ikut dihapus dan halaman pelanggan langsung tidak bisa dibuka. Tindakan ini tidak bisa dibatalkan.',{ok:'Hapus '+tk.length+' link'}))return;
+ const r=await api('/admin/api/sessions-bulk',{method:'POST',body:JSON.stringify({action:'delete',tokens:tk})});if(!r.ok)return toast(r.error||'Gagal',1);toast(r.done+' link dihapus.'+(r.pending?' '+r.pending+' link sebagian filenya belum terhapus dari cloud; dibersihkan otomatis nanti.':''));L.sel.clear();await loadMore(L.rows.length);load()}
+async function bulkExt(d){const tk=[...L.sel];if(!tk.length)return;const r=await api('/admin/api/sessions-bulk',{method:'POST',body:JSON.stringify({action:'extend',days:d,tokens:tk})});if(!r.ok)return toast(r.error||'Gagal',1);toast('Masa berlaku '+r.done+' link diperpanjang '+d+' hari.');await loadMore(L.rows.length)}
+$('l_q').addEventListener('input',()=>{clearTimeout(lTimer);lTimer=setTimeout(()=>loadL(true),300)});
+$('l_studio').addEventListener('change',()=>loadL(true));$('l_source').addEventListener('change',()=>loadL(true));$('l_social').addEventListener('change',()=>loadL(true));
+function fillStudios(){const cur=$('l_studio').value;$('l_studio').innerHTML='<option value="">Semua studio</option>'+knownStudios.map(x=>`<option value="${he(x.studio)}">${he(x.studio)}</option>`).join('');$('l_studio').value=cur}
+
+
+function showU(){$('u_panel').hidden=false;$('addu').hidden=true;$('u_panel').scrollIntoView({behavior:'smooth',block:'nearest'})}
+function hideU(){$('u_panel').hidden=true;$('addu').hidden=false}
+// ---- kotak pilihan studio (ganti dropdown bawaan browser): bisa pilih yang sudah ada atau ketik nama baru ----
+function studioChoices(){const seen=new Map();for(const x of knownStudios){const k=String(x.studio).trim().toLowerCase();if(k&&!seen.has(k))seen.set(k,{name:x.studio,n:x.sessions})}return [...seen.values()]}
+function combo(inp){
+ inp.removeAttribute('list');inp.setAttribute('autocomplete','off');inp.setAttribute('role','combobox');inp.setAttribute('aria-expanded','false');
+ const w=document.createElement('div');w.className='cb';inp.parentNode.insertBefore(w,inp);w.appendChild(inp);
+ const b=document.createElement('button');b.type='button';b.className='cb-btn';b.tabIndex=-1;b.setAttribute('aria-label','Tampilkan daftar studio');b.innerHTML='<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';w.appendChild(b);
+ const ul=document.createElement('ul');ul.className='cb-list';ul.setAttribute('role','listbox');w.appendChild(ul);
+ let items=[],act=-1,all=true;
+ const close=()=>{w.classList.remove('open');inp.setAttribute('aria-expanded','false');act=-1};
+ function draw(){
+  const v=inp.value.trim().toLowerCase(),list=studioChoices();
+  items=all||!v?list:list.filter(x=>x.name.toLowerCase().includes(v));
+  const exact=list.some(x=>x.name.toLowerCase()===v);
+  let h=items.map((x,i)=>`<li role="option" data-i="${i}" class="${x.name.toLowerCase()===v?'cur':''}"><span>${he(x.name)}</span><small>${x.n} link</small></li>`).join('');
+  if(!items.length)h=v?`<li class="new" data-new="1">Pakai nama baru “${he(inp.value.trim())}”</li>`:'<li class="none">Belum ada studio. Ketik nama studio.</li>';
+  else if(v&&!exact&&!all)h+=`<li class="new" data-new="1">Pakai nama baru “${he(inp.value.trim())}”</li>`;
+  ul.innerHTML=h;act=-1;w.classList.add('open');inp.setAttribute('aria-expanded','true')}
+ function pick(i){inp.value=items[i].name;close();inp.dispatchEvent(new Event('input',{bubbles:true}));inp.dispatchEvent(new Event('change',{bubbles:true}))}
+ function mark(d){const li=[...ul.querySelectorAll('li[data-i]')];if(!li.length)return;act=(act+d+li.length)%li.length;li.forEach((e,i)=>e.classList.toggle('on',i===act));li[act].scrollIntoView({block:'nearest'})}
+ inp.addEventListener('focus',()=>{all=true;draw()});
+ inp.addEventListener('input',()=>{all=false;draw()});
+ inp.addEventListener('keydown',e=>{if(e.key==='ArrowDown'){e.preventDefault();if(!w.classList.contains('open')){all=true;draw()}mark(1)}else if(e.key==='ArrowUp'){e.preventDefault();mark(-1)}else if(e.key==='Enter'&&w.classList.contains('open')&&act>=0){e.preventDefault();pick(act)}else if(e.key==='Escape'&&w.classList.contains('open')){e.stopPropagation();e.preventDefault();close()}else if(e.key==='Tab')close()});
+ b.addEventListener('mousedown',e=>{e.preventDefault();if(w.classList.contains('open'))close();else{inp.focus();all=true;draw()}});
+ ul.addEventListener('mousedown',e=>{e.preventDefault();const li=e.target.closest('li');if(!li)return;if(li.dataset.new)close();else if(li.dataset.i!=null)pick(+li.dataset.i)});
+ document.addEventListener('mousedown',e=>{if(!w.contains(e.target))close()});
+ inp.addEventListener('blur',()=>setTimeout(close,120))}
+combo($('u_studio'));combo($('l_nm'));combo($('s_nm'));
+
+
+
+// ---- Status bucket & cek koneksi ----
+function healthChip(b){return b.health==='bad'?`<div class="bad" style="font-size:12px;font-weight:700" title="${he(b.healthMsg)}">⚠ Bermasalah: ${he(b.healthMsg||'tes gagal')}</div>`:b.health==='ok'?'<div class="ok" style="font-size:12px;font-weight:700">✔ Sehat</div>':'<div class="muted">Belum dites</div>'}
+function healthPill(b){return b.health==='bad'?` <span class="pill bad" title="${he(b.healthMsg)}">Bermasalah</span>`:''}
+function syncCell(x){const r=x.sync,fresh=x.syncAt&&S.now-x.syncAt<15*60e3;
+ if(x.blocked)return'<span class="bad">Terputus</span>';
+ if(x.status==='never')return'<span class="muted">–</span>';
+ if(!r||!fresh)return`<span class="muted">${x.status==='offline'?'Tidak ada laporan':'Belum melapor'}</span>`;
+ if(r.kasir&&r.kasir.ok===false)return`<b class="bad">Kasir bermasalah</b><div class="muted">${he(r.kasir.error)}</div>`;
+ if(r.errors>0)return`<b class="bad">${r.errors} sesi gagal</b>${r.lastError?`<div class="muted">${he(r.lastError)}</div>`:''}`;
+ if(r.pending>0)return`<b style="color:#9a6a00">${r.pending} antre</b>`;
+ return'<b class="ok">Lancar</b>'}
+const DG={ok:['✔','ok'],queue:['⏳',''],warn:['⚠','bad'],down:['✘','bad'],blocked:['⛔','bad'],unknown:['•','muted']};
+async function runDiag(){const btn=$('dg_btn');btn.disabled=true;btn.textContent='Menguji…';$('dg_out').innerHTML='<p class="muted">Menguji bucket dan kasir, mohon tunggu…</p>';
+ const r=await api('/admin/api/diagnostics',{method:'POST'});btn.disabled=false;btn.textContent='Jalankan cek lagi';if(!r||!r.buckets){$('dg_out').innerHTML='<p class="bad">Gagal menjalankan cek.</p>';return}
+ const row=(ok,title,note,tag)=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid #E6EBF1"><b class="${ok===true?'ok':ok===false?'bad':'muted'}" style="width:18px">${ok===true?'✔':ok===false?'✘':tag||'•'}</b><div><b>${he(title)}</b><div class="${ok===false?'bad':'muted'}">${he(note)}</div></div></div>`;
+ const k=r.kasir;
+ $('dg_out').innerHTML='<h3 style="margin:14px 0 2px;font-size:14px">Bucket cloud</h3>'+(r.buckets.map(b=>row(b.ok,b.name,b.ok?'Tulis, baca, hapus berhasil'+(b.ms?` (${b.ms} ms)`:''):b.error)).join('')||'<p class="muted">Belum ada bucket aktif.</p>')
+  +'<h3 style="margin:14px 0 2px;font-size:14px">Kasir</h3>'+row(k.configured?k.ok:(k.ok?true:false),k.configured?'Kasir (verifikasi token studio)':'Verifikasi token studio',k.ok?(k.configured?'Terjangkau'+(k.ms?` (${k.ms} ms)`:''):(k.note||'OK')):k.error)
+  +'<h3 style="margin:14px 0 2px;font-size:14px">Booth / studio</h3>'+(r.studios.map(x=>{const d=DG[x.state]||DG.unknown;return `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid #E6EBF1"><b class="${d[1]}" style="width:18px">${d[0]}</b><div><b>${he(x.name)}</b> <span class="muted">${x.lastSeenAt?'· terakhir terlihat '+ago(x.lastSeenAt):''}</span><div class="${d[1]==='bad'?'bad':'muted'}">${he(x.note)}</div></div></div>`}).join('')||'<p class="muted">Belum ada studio.</p>');
+ S.now=r.at;$('dg_at').textContent='Dicek '+new Date(r.at).toLocaleTimeString('id-ID');load()}
+
+// ---- Kelola studio ----
+let S={rows:[],editKey:null,t:null,now:0};
+const EV={ping:'cek koneksi',sessions:'daftar sesi',upload:'unggah file',delete:'hapus sesi'};
+const ST={online:'Online',recent:'Baru saja',offline:'Offline',never:'Belum terhubung',blocked:'Terputus'};
+const ago=t=>{if(!t)return'belum pernah';const d=Math.max(0,Math.round((S.now-t)/1000));return d<45?'baru saja':d<3600?Math.round(d/60)+' menit lalu':d<86400?Math.round(d/3600)+' jam lalu':Math.round(d/86400)+' hari lalu'};
+async function loadS(){const r=await api('/admin/api/studios');if(!r||!r.studios)return;S.rows=r.studios;S.now=r.now;
+ $('s_cnt').textContent=`${r.counts.online} online · ${r.counts.total} studio${r.counts.blocked?' · '+r.counts.blocked+' terputus':''}`;drawS()}
+function drawS(){
+ $('s_t').innerHTML=S.rows.length?'<tr><th>Status</th><th>Studio</th><th>Link & file</th><th>Terakhir terlihat</th><th>Sinkron booth</th><th>Unggahan terakhir</th><th></th></tr>'+S.rows.map(x=>`<tr class="${x.blocked?'blk':''}">
+  <td><span class="dot ${x.status}">${ST[x.status]}</span></td>
+  <td><b>${he(x.name)}</b>${x.note?`<div class="muted">${he(x.note)}</div>`:''}${x.retentionDays?`<div class="muted">Masa simpan ${x.retentionDays} hari</div>`:''}</td>
+  <td>${x.sessions} link<div class="muted">${x.files} file · ${fmtBytes(x.bytes)}${x.pending?` · ${x.pending} menunggu`:''}</div></td>
+  <td title="${x.lastSeenAt?he(new Date(x.lastSeenAt).toLocaleString('id-ID')):''}">${ago(x.lastSeenAt)}${x.lastEvent?`<div class="muted">${EV[x.lastEvent]||he(x.lastEvent)}${x.lastIp?' · '+he(x.lastIp):''}</div>`:''}</td>
+  <td>${syncCell(x)}</td>
+  <td>${x.lastUploadAt?ago(x.lastUploadAt):'<span class="muted">–</span>'}</td>
+  <td><div class="acts">${can('link.view')?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="seeS(this.dataset.k)">Lihat link</button>`:''}
+   ${can('studio.edit')?`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="openS(this.dataset.k)">Edit</button>
+   ${x.blocked?`<button class="btn sm" type="button" data-k="${he(x.key)}" onclick="blockS(this.dataset.k,false)">Sambungkan</button>`:`<button class="btn sm s" type="button" data-k="${he(x.key)}" onclick="blockS(this.dataset.k,true)">Putuskan</button>`}
+   <button class="btn sm d" type="button" data-k="${he(x.key)}" onclick="delS(this.dataset.k)">Hapus</button>`:''}</div></td></tr>`).join(''):'<tr><td class="muted" style="padding:18px 8px">Belum ada studio. Studio muncul otomatis begitu booth pertama terhubung ke galeri.</td></tr>';
+ $('s_info').textContent=S.rows.length?'Online = menghubungi galeri dalam 5 menit terakhir. Booth menghubungi galeri tiap ±1 menit selama aplikasinya menyala dan galeri diaktifkan.':''}
+const sRow=k=>S.rows.find(x=>x.key===k);
+function openS(k){const x=k?sRow(k):null;S.editKey=x?x.key:null;$('s_dt').textContent=x?'Edit studio':'Tambah studio';$('s_nm').value=x?x.name:'';$('s_note').value=x?x.note:'';$('s_ret').value=x&&x.retentionDays?x.retentionDays:'';$('s_msg').textContent='';
+ $('s_nmh').textContent=x?'Mengubah nama ikut mengubah semua link studio ini. Nama yang sama dengan studio lain akan menggabungkan keduanya.':'';$('s_dlg').showModal()}
+async function saveS(){const body={note:$('s_note').value.trim(),retentionDays:$('s_ret').value.trim()===''?null:Number($('s_ret').value)},nm=$('s_nm').value.trim();
+ if(!nm){$('s_msg').textContent='Nama studio wajib diisi';$('s_msg').className='bad';return}
+ let r;
+ if(S.editKey){const x=sRow(S.editKey);if(nm!==x.name){const other=S.rows.find(y=>y.key!==x.key&&y.name.toLowerCase()===nm.toLowerCase());if(other&&!await ask('Gabungkan dengan “'+other.name+'”?','Semua link “'+x.name+'” dipindah ke “'+other.name+'”. Tindakan ini tidak bisa dibatalkan.',{ok:'Ya, gabungkan',danger:false}))return;body.name=nm}
+  r=await api('/admin/api/studios/'+encodeURIComponent(S.editKey),{method:'POST',body:JSON.stringify(body)})}
+ else r=await api('/admin/api/studios',{method:'POST',body:JSON.stringify({...body,name:nm})});
+ if(r.ok){$('s_dlg').close();toast(r.merged?'Studio digabung.':'Tersimpan.');loadS();load()}else{$('s_msg').textContent=r.error||'Gagal menyimpan';$('s_msg').className='bad'}}
+async function blockS(k,on){const x=sRow(k);if(!x)return;
+ if(on&&!await ask('Putuskan “'+x.name+'”?','Booth studio ini tidak bisa mendaftarkan sesi atau mengunggah foto sampai disambungkan lagi. Link pelanggan yang sudah ada tetap bisa dibuka.',{ok:'Ya, putuskan'}))return;
+ const r=await api('/admin/api/studios/'+encodeURIComponent(k),{method:'POST',body:JSON.stringify({blocked:on})});
+ if(r.ok){toast(on?'Studio diputus.':'Studio disambungkan lagi.');loadS()}else toast(r.error||'Gagal',1)}
+async function delS(k){const x=sRow(k);if(!x)return;
+ if(x.blocked){toast('Studio sedang diputus. Sambungkan dulu bila ingin menghapusnya.',1);return}
+ if(!await ask('Hapus studio “'+x.name+'” dari daftar?',x.sessions?'Studio ini masih punya '+x.sessions+' link. Kamu akan ditanya lagi soal link-nya.':'Studio akan muncul lagi otomatis kalau booth-nya menghubungi galeri.',{ok:'Lanjut'}))return;
+ let r=await api('/admin/api/studios/'+encodeURIComponent(k),{method:'DELETE'});
+ if(r.sessions){if(!await ask('Hapus studio beserta '+r.sessions+' link?','Semua link dan file di cloud milik “'+x.name+'” ikut dihapus. Tidak bisa dibatalkan.',{ok:'Ya, hapus semua'}))return;r=await api('/admin/api/studios/'+encodeURIComponent(k)+'?purge=1',{method:'DELETE'})}
+ if(r.ok){toast(r.deleted===false?'Sebagian file di cloud belum terhapus, dibereskan otomatis nanti.':'Studio dihapus.');loadS();load()}else toast(r.error||'Gagal menghapus',1)}
+function seeS(k){const x=sRow(k);if(!x)return;$('l_studio').value='';$('l_source').value='';$('l_q').value=x.name;location.hash='#link'}
+setInterval(()=>{if(location.hash==='#studio'&&!document.hidden)loadS()},15000);
+
+// ---- Live update: angka & daftar di layar diperbarui sendiri (tanpa memuat ulang halaman) ----
+// Hanya saat tab terlihat; dilewati bila ada dialog terbuka; daftar baru digambar ulang kalau datanya benar-benar berubah (tidak berkedip, pilihan centang tetap).
+const LIVE_MS=6000;let liveBusy=false,liveN=0;
+async function qjson(u){try{const r=await fetch(u,{headers:{'Content-Type':'application/json'}});if(!r.ok)return null;return await r.json()}catch{return null}} // tanpa reload otomatis saat 401/gangguan jaringan
+const dlgOpen=()=>[...document.querySelectorAll('dialog')].some(d=>d.open);
+function liveMark(ok){const e=$('l_live');if(!e)return;e.textContent=ok?'● Live: diperbarui otomatis, terakhir '+new Date().toLocaleTimeString('id-ID'):'○ Tidak terhubung ke server, mencoba lagi…';e.className=ok?'muted':'bad'}
+async function liveLinks(){
+ const n=L.rows.length,q=new URLSearchParams({q:$('l_q').value.trim(),studio:$('l_studio').value,source:$('l_source').value,social:$('l_social').value,limit:Math.min(100,Math.max(30,n)),offset:0});
+ const r=await qjson('/admin/api/sessions?'+q);if(!r||!r.sessions)return false;
+ if(L.rows.length!==n)return true; // pengguna menekan "Muat lebih"/mengubah filter selagi menunggu: jangan timpa
+ if(JSON.stringify([L.total,L.rows])!==JSON.stringify([r.total,r.sessions])){
+  L.total=r.total;L.pub=r.publicUrl||'';L.rows=r.sessions;
+  const have=new Set(r.sessions.map(x=>x.token));[...L.sel].forEach(t=>{if(!have.has(t))L.sel.delete(t)});drawL()}
+ return true}
+async function liveStats(full){
+ const s=await qjson('/admin/api/state');if(!s||!s.stats)return false;
+ $('s_sessions').textContent=s.stats.sessions;$('s_files').textContent=s.stats.files;$('s_pending').textContent=s.stats.pending;$('s_buckets').textContent=s.buckets.filter(b=>b.enabled).length;
+ const ae=document.activeElement,editing=ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)&&ae.closest('#pg-ringkasan');
+ if(full&&!editing&&$('bform').hidden)await load(); // batang kapasitas & tabel bucket: tiap ~30 dtk, tidak saat pengguna sedang mengisi formulir
+ return true}
+async function liveTick(){
+ if(liveBusy||document.hidden||dlgOpen())return;liveBusy=true;
+ try{const id=(location.hash||'').slice(1);let ok=true;
+  if(id==='link')ok=await liveLinks();else if(id===''||id==='ringkasan')ok=await liveStats(++liveN%5===0);
+  if(id==='link'||id===''||id==='ringkasan')liveMark(ok)}
+ finally{liveBusy=false}}
+setInterval(liveTick,LIVE_MS);document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveTick()});
+
+// ---- pengguna & hak akses ----
+const ROLE_TXT=r=>r==='admin'?'Admin':'Staf';let MU={rows:[],edit:null};
+const fmtLast=t=>t?new Date(t).toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'Belum pernah';
+async function loadM(){const r=await api('/admin/api/users');if(!r||!r.users)return;MU.rows=r.users;
+ $('m_cnt').textContent=r.users.length+' pengguna + admin utama';
+ $('m_t').innerHTML='<tr><th>Pengguna</th><th>Peran / hak akses</th><th>Terakhir masuk</th><th>Status</th><th></th></tr>'+
+  `<tr><td><b>${he(r.envUser)}</b><div class="muted">admin utama (dari file .env)</div></td><td>Admin · akses penuh</td><td class="muted">–</td><td><span class="pill ok">Aktif</span></td><td class="muted">Tidak bisa diubah di sini</td></tr>`+
+  r.users.map(u=>`<tr><td><b>${he(u.name)}</b><div class="muted">${he(u.username)}</div></td><td>${u.role==='admin'?'Admin · akses penuh':'Staf · '+(u.perms.length?u.perms.map(k=>he(ME.catalog[k]||k)).join(', '):'<span class="bad">tanpa hak</span>')}</td><td>${fmtLast(u.lastLoginAt)}</td><td>${u.active?'<span class="pill ok">Aktif</span>':'<span class="pill bad">Nonaktif</span>'}</td><td><div class="acts"><button class="btn sm s" type="button" data-id="${u.id}" onclick="openM(+this.dataset.id)">Edit</button> <button class="btn sm d" type="button" data-id="${u.id}" onclick="delM(+this.dataset.id)">Hapus</button></div></td></tr>`).join('');
+ $('m_info').textContent=''}
+function mBuild(){const box=$('m_perms');if(box.dataset.done)return;box.dataset.done=1;
+ box.innerHTML=Object.entries(ME.catalog).map(([k,t])=>`<label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:6px 0"><input type="checkbox" data-perm="${k}" onchange="mDeps(this)"> ${he(t)}</label>`).join('');
+ $('m_preset').innerHTML='<option value="">Pilih paket…</option>'+ME.presets.map(p=>`<option value="${he(p.id)}">${he(p.label)}</option>`).join('')}
+const mSet=list=>document.querySelectorAll('#m_perms input').forEach(c=>{c.checked=list.includes(c.dataset.perm)});
+function mDeps(c){const imp={'studio.edit':'studio.view','link.edit':'link.view','upload':'link.view','storage.edit':'storage.view'};
+ if(c.checked&&imp[c.dataset.perm])document.querySelector(`#m_perms input[data-perm="${imp[c.dataset.perm]}"]`).checked=true;
+ if(!c.checked)document.querySelectorAll('#m_perms input').forEach(o=>{if(imp[o.dataset.perm]===c.dataset.perm)o.checked=false})}
+function mPreset(){const p=ME.presets.find(x=>x.id===$('m_preset').value);if(p)mSet(p.perms)}
+function mRole(){$('m_pbox').hidden=$('m_role').value==='admin'}
+function openM(id){mBuild();const u=id?MU.rows.find(x=>x.id===id):null;MU.edit=u?u.id:null;$('m_dt').textContent=u?'Edit pengguna':'Tambah pengguna';
+ $('m_un').value=u?u.username:'';$('m_un').disabled=!!u;$('m_nm').value=u?u.name:'';$('m_pw').value='';$('m_pwl').textContent=u?'Kata sandi baru (kosongkan jika tidak diubah)':'Kata sandi';
+ $('m_role').value=u?u.role:'staff';$('m_act').checked=u?u.active:true;mSet(u?u.perms:[]);$('m_preset').value='';mRole();$('m_msg').textContent='';$('m_dlg').showModal()}
+async function saveM(){const body={name:$('m_nm').value.trim(),role:$('m_role').value,active:$('m_act').checked,perms:[...document.querySelectorAll('#m_perms input:checked')].map(c=>c.dataset.perm)};
+ if($('m_pw').value)body.password=$('m_pw').value;let r;
+ if(MU.edit)r=await api('/admin/api/users/'+MU.edit,{method:'POST',body:JSON.stringify(body)});
+ else{body.username=$('m_un').value.trim();r=await api('/admin/api/users',{method:'POST',body:JSON.stringify(body)})}
+ if(r.ok){$('m_dlg').close();toast('Pengguna tersimpan.');loadM()}else{$('m_msg').textContent=r.error||'Gagal menyimpan';$('m_msg').className='bad'}}
+async function delM(id){const u=MU.rows.find(x=>x.id===id);if(!u||!await ask('Hapus pengguna “'+u.username+'”?','Akun ini langsung tidak bisa masuk lagi. Tindakan ini tidak bisa dibatalkan.'))return;
+ const r=await api('/admin/api/users/'+id,{method:'DELETE'});if(r.ok){toast('Pengguna dihapus.');loadM()}else toast(r.error||'Gagal',1)}
+function openPw(){$('pw_cur').value='';$('pw_new').value='';$('pw_msg').textContent='';$('pw_dlg').showModal()}
+async function savePw(){const r=await api('/admin/api/me/password',{method:'POST',body:JSON.stringify({current:$('pw_cur').value,password:$('pw_new').value})});
+ if(r.ok){$('pw_dlg').close();toast('Kata sandi diganti.')}else{$('pw_msg').textContent=r.error||'Gagal';$('pw_msg').className='bad'}}
+function applyMe(){document.querySelectorAll('[data-need]').forEach(el=>{const n=el.dataset.need;el.classList.toggle('noperm',!(n==='@admin'?ME.admin:can(n)))});
+ $('who').textContent=(ME.name||ME.username)+' · '+(ME.admin?'admin':'staf');$('pwbtn').classList.toggle('noperm',!!ME.env)}
+// ---- menu samping (hash: #ringkasan, #studio, #link, #penyimpanan, #pengaturan) ----
+const PAGES=['ringkasan','studio','link','penyimpanan','pengaturan','pengguna'];
+const pageOk=p=>{const a=document.querySelector(`#nav a[data-p="${p}"]`);return !!a&&!a.classList.contains('noperm')};
+if((location.hash||'')==='#unggah')history.replaceState(null,'','#link'),window.__openU=1; // alamat lama
+function nav(){const id=PAGES.includes((location.hash||'').slice(1))&&pageOk(location.hash.slice(1))?location.hash.slice(1):'ringkasan';
+ PAGES.forEach(p=>{$('pg-'+p).className='page'+(p===id?' on':'')});
+ document.querySelectorAll('#nav a').forEach(a=>{const on=a.dataset.p===id;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+ document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
+window.addEventListener('hashchange',nav);
+window.addEventListener('hashchange',()=>{if(location.hash==='#unggah'){history.replaceState(null,'','#link');nav();if(can('upload'))showU()}});
+$('ham').addEventListener('click',()=>document.body.classList.toggle('open'));$('scrim').addEventListener('click',()=>document.body.classList.remove('open'));
+(async()=>{const me=await api('/admin/api/me');if(me&&me.perms)ME=me;applyMe();nav();if(window.__openU&&can('upload'))showU();load()})();
+</script></body></html>

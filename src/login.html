@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="light">
+<title>POPSNAP Galeri — Masuk</title>
+<link rel="icon" href="/assets/icon-popsnap.ico">
+<style>
+@font-face{font-family:"Fredoka";font-weight:700;font-style:normal;font-display:swap;src:url(/assets/fredoka-700.woff2) format("woff2")}
+@font-face{font-family:"Plus Jakarta Sans";font-weight:200 800;font-style:normal;font-display:swap;src:url(/assets/jakarta.woff2) format("woff2")}
+:root{--ink:#181B23;--red:#E02843;--red-dark:#C9203A;--yellow:#FFD23F;--muted:#55606E;--line:#C7D0DA;--bad:#B3122B}
+*{box-sizing:border-box}
+html{background:#4082AE url(/assets/welcome-noise.webp) 0 0/402px 437px}
+body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px 16px;font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);position:relative;overflow-x:hidden}
+body{--ud:calc(min(100vw, 100vh * .575) / 402);--uc:calc(min(100vw, 100vh * .8, 560px) / 402)}
+.deco{position:fixed;pointer-events:none;height:auto;z-index:0}
+.tl{top:0;left:0;width:calc(var(--ud) * 130)}.tr{top:0;right:0;width:calc(var(--ud) * 262)}.bl{bottom:0;left:0;width:calc(var(--ud) * 160)}.br{bottom:0;right:0;width:calc(var(--ud) * 313)}
+main{position:relative;z-index:1;width:min(calc(var(--uc) * 400),100%)}
+.logo{display:block;width:calc(var(--uc) * 200);height:auto;margin:0 auto calc(var(--uc) * 12)}
+.card{background:#fff;border:2px solid #000;border-radius:calc(var(--uc) * 22);padding:calc(var(--uc) * 26) calc(var(--uc) * 24) calc(var(--uc) * 24);box-shadow:calc(var(--uc) * 5) calc(var(--uc) * 5) 0 #000;animation:settle .45s cubic-bezier(.2,.9,.3,1.2) both}
+@keyframes settle{from{opacity:0;transform:translateY(-14px) rotate(-.8deg)}to{opacity:1;transform:none}}
+h1{margin:0 0 4px;font-family:Fredoka,"Plus Jakarta Sans",sans-serif;font-style:italic;font-weight:700;font-size:max(23px,calc(var(--uc) * 28));line-height:1.15}
+.sub{margin:0 0 20px;color:var(--muted);font-size:max(13px,calc(var(--uc) * 14));line-height:1.5}
+label{display:block;margin:0 0 6px;font-size:max(13px,calc(var(--uc) * 13));font-weight:600}
+.field{margin-bottom:16px}
+input{width:100%;height:max(44px,calc(var(--uc) * 46));padding:0 14px;border:2px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font:inherit;font-size:max(16px,calc(var(--uc) * 16));transition:border-color .15s}
+input:hover{border-color:#8A97A6}
+input:focus{outline:none;border-color:#000;box-shadow:0 0 0 4px var(--yellow)}
+.pw{position:relative}.pw input{padding-right:98px}
+.toggle{position:absolute;right:6px;top:6px;height:34px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:max(13px,calc(var(--uc) * 13));font-weight:600;cursor:pointer}
+.toggle:hover{background:#EEF2F6;color:var(--ink)}.toggle:focus-visible{outline:3px solid var(--yellow);background:#EEF2F6}
+.go{position:relative;overflow:hidden;width:100%;height:max(46px,calc(var(--uc) * 50));margin-top:6px;border:1px solid #000;border-radius:999px;background:var(--red);color:#fff;font-family:Fredoka,"Plus Jakarta Sans",sans-serif;font-style:italic;font-weight:700;font-size:max(18px,calc(var(--uc) * 19));cursor:pointer;box-shadow:1px 4px 7px rgba(0,0,0,.45);transition:transform .08s,box-shadow .08s,background .15s}
+.go::before{content:"";position:absolute;inset:0;border-radius:inherit;background:url(/assets/speck.svg) 0 0 repeat;pointer-events:none}
+.go span{position:relative}
+.go:hover{background:var(--red-dark)}.go:active{transform:scale(.97);box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.go:focus-visible{outline:4px solid var(--yellow);outline-offset:3px}.go[disabled]{opacity:.7;cursor:progress}
+.msg{min-height:20px;margin:14px 0 0;font-size:14px;line-height:1.45;color:var(--bad);font-weight:600}
+.foot{margin:18px 0 0;text-align:center;color:#fff;font-size:max(13px,calc(var(--uc) * 13));text-shadow:0 1px 2px rgba(0,0,0,.4)}
+@media (prefers-reduced-motion:reduce){.card{animation:none}.go{transition:none}}
+@media (max-height:520px){.card{padding:16px 20px 16px}h1{font-size:23px}.sub{margin-bottom:10px;font-size:13px}.field{margin-bottom:10px}input{height:42px}.go{height:44px;margin-top:2px}.msg{margin-top:8px;min-height:16px}.foot{margin-top:10px}}
+@media (max-width:380px){.card{padding:22px 18px 20px}h1{font-size:25px}}
+</style>
+</head>
+<body>
+<img class="deco tl" src="/assets/welcome-tl.svg" alt="" width="130" height="302">
+<img class="deco tr" src="/assets/welcome-tr.svg" alt="" width="262" height="209">
+<img class="deco bl" src="/assets/welcome-bl.svg" alt="" width="160" height="189">
+<img class="deco br" src="/assets/welcome-br.svg" alt="" width="313" height="371">
+<main>
+  <img class="logo" src="/assets/welcome-logo.svg" alt="POPSNAP" width="184" height="62">
+  <section class="card" aria-labelledby="t">
+    <h1 id="t">Masuk ke galeri</h1>
+    <p class="sub">Atur bucket cloud, masa simpan file, dan unggah manual.</p>
+    <form id="f" autocomplete="on" novalidate>
+      <div class="field">
+        <label for="u">Nama pengguna</label>
+        <input id="u" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required>
+      </div>
+      <div class="field">
+        <label for="p">Kata sandi</label>
+        <div class="pw">
+          <input id="p" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="toggle" id="tg" aria-controls="p" aria-pressed="false">Tampilkan</button>
+        </div>
+      </div>
+      <button class="go" id="go" type="submit"><span>Masuk</span></button>
+      <p class="msg" id="m" role="alert" aria-live="assertive"></p>
+    </form>
+  </section>
+  <p class="foot">Halaman ini hanya untuk pengelola studio.</p>
+</main>
+<script>
+(function () {
+  var f = document.getElementById("f"), u = document.getElementById("u"), p = document.getElementById("p");
+  var go = document.getElementById("go"), m = document.getElementById("m"), tg = document.getElementById("tg");
+  tg.addEventListener("click", function () {
+    var show = p.type === "password";
+    p.type = show ? "text" : "password";
+    tg.textContent = show ? "Sembunyikan" : "Tampilkan";
+    tg.setAttribute("aria-pressed", show ? "true" : "false");
+    p.focus();
+  });
+  f.addEventListener("submit", function (e) {
+    e.preventDefault();
+    m.textContent = "";
+    if (!u.value.trim()) { m.textContent = "Isi nama pengguna."; u.focus(); return; }
+    if (!p.value) { m.textContent = "Isi kata sandi."; p.focus(); return; }
+    go.disabled = true; go.firstChild.textContent = "Memeriksa…";
+    fetch("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: u.value.trim(), password: p.value }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (r) {
+        if (r.ok) { location.replace("/admin"); return; }
+        m.textContent = r.j.error || "Tidak bisa masuk. Coba lagi.";
+        go.disabled = false; go.firstChild.textContent = "Masuk";
+        p.select();
+      })
+      .catch(function () {
+        m.textContent = "Tidak terhubung ke server. Cek internet lalu coba lagi.";
+        go.disabled = false; go.firstChild.textContent = "Masuk";
+      });
+  });
+})();
+</script>
+</body>
+</html>

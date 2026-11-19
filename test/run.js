@@ -1,0 +1,440 @@
+// Uji: tanda tangan SigV4 (vektor resmi AWS) + alur lengkap dengan S3 tiruan.
+process.env.DATA_DIR = require("fs").mkdtempSync(require("os").tmpdir() + "/gal-");
+process.env.STUDIO_TOKENS = "tokenstudioA0000000:Studio A,tokenstudioB0000000:Studio B";
+process.env.ADMIN_PASSWORD = "rahasia"; process.env.ADMIN_ALLOW_BASIC = "1"; process.env.PUBLIC_URL = "https://foto.example.com";
+const assert = require("assert"), http = require("http"), zlib = require("zlib");
+const { presignRaw } = require("../src/s3");
+
+// 1) vektor resmi AWS (GET presigned, docs "Authenticating Requests: Using Query Parameters")
+const u = presignRaw({ method: "GET", host: "examplebucket.s3.amazonaws.com", path: "/test.txt", accessKey: "AKIAIOSFODNN7EXAMPLE", secretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", region: "us-east-1", expires: 86400, now: new Date("2013-05-24T00:00:00Z") });
+assert(u.endsWith("aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"), "SigV4 salah: " + u);
+console.log("ok  SigV4 cocok dengan vektor resmi AWS");
+const { regionOf, presign } = require("../src/s3");
+assert.strictEqual(regionOf({ endpoint: "https://s3.us-west-004.backblazeb2.com", region: "auto" }), "us-west-004");
+assert.strictEqual(regionOf({ endpoint: "https://s3.eu-central-003.backblazeb2.com", region: "" }), "eu-central-003");
+assert.strictEqual(regionOf({ endpoint: "https://abc.r2.cloudflarestorage.com", region: "auto" }), "auto");
+assert.strictEqual(regionOf({ endpoint: "https://s3.us-west-004.backblazeb2.com", region: "us-west-002" }), "us-west-002");
+const bu = presign({ endpoint: "https://s3.us-west-004.backblazeb2.com", region: "auto", bucket: "bk", access_key: "K", secret_key: "S" }, "GET", "a/b c.jpg", { now: new Date("2026-01-01T00:00:00Z") });
+assert(bu.startsWith("https://s3.us-west-004.backblazeb2.com/bk/a/b%20c.jpg?") && bu.includes("us-west-004%2Fs3%2Faws4_request"), bu);
+console.log("ok  region Backblaze B2 diambil dari endpoint, path-style benar");
+
+(async () => {
+  // S3 tiruan (memori)
+  const store = new Map(), mod = new Map(); // mod: waktu ubah terakhir objek (untuk uji pindai)
+  const s3 = http.createServer((req, res) => {
+    const key = decodeURIComponent(req.url.split("?")[0]);
+    if (!/X-Amz-Signature=[0-9a-f]{64}/.test(req.url) || key.startsWith("/bad/")) { res.statusCode = 403; return res.end(); } // /bad/ = bucket dengan key salah
+    if (req.method === "GET" && /[?&]list-type=2/.test(req.url)) { // daftar objek (ListObjectsV2) tiruan, satu halaman
+      const bk = key.replace(/^\//, "").split("/")[0], esc = (x) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      const items = [...store.entries()].filter(([k]) => k.startsWith(`/${bk}/`)).map(([k, v]) => `<Contents><Key>${esc(k.slice(bk.length + 2))}</Key><LastModified>${new Date(mod.get(k) || Date.now()).toISOString()}</LastModified><Size>${v.length}</Size></Contents>`).join("");
+      res.setHeader("Content-Type", "application/xml"); return res.end(`<?xml version="1.0"?><ListBucketResult><IsTruncated>false</IsTruncated>${items}</ListBucketResult>`);
+    }
+    if (req.method === "PUT") { const c = []; req.on("data", (d) => c.push(d)); req.on("end", () => { store.set(key, Buffer.concat(c)); res.end(); }); return; }
+    const v = store.get(key);
+    if (req.method === "DELETE") { store.delete(key); res.statusCode = 204; return res.end(); }
+    if (!v) { res.statusCode = 404; return res.end(); }
+    res.setHeader("Content-Length", v.length); if (req.method === "HEAD") return res.end(); res.end(v);
+  }).listen(0);
+  const s3port = s3.address().port;
+
+  const { app, cleanup } = require("../src/server");
+  const srv = app.listen(0); const base = `http://127.0.0.1:${srv.address().port}`;
+  const A = { Authorization: "Bearer tokenstudioA0000000", "Content-Type": "application/json" };
+  const admin = { Authorization: "Basic " + Buffer.from("admin:rahasia").toString("base64"), "Content-Type": "application/json" };
+  const j = async (p, o) => { const r = await fetch(base + p, o); return { status: r.status, body: await r.json().catch(() => null), r }; };
+
+  assert.strictEqual((await j("/admin/api/state")).status, 401);
+  // login lewat halaman: tanpa popup Basic Auth, cookie sesi, batas percobaan
+  const lp = await fetch(`${base}/admin`); assert.strictEqual(lp.status, 401); assert(!lp.headers.get("www-authenticate"), "tidak boleh memunculkan popup Basic Auth"); assert((await lp.text()).includes("Masuk ke galeri"));
+  const JS = { "Content-Type": "application/json" };
+  assert.strictEqual((await j("/admin/api/login", { method: "POST", headers: JS, body: JSON.stringify({ username: "admin", password: "salah" }) })).status, 401);
+  const good = await fetch(`${base}/admin/api/login`, { method: "POST", headers: JS, body: JSON.stringify({ username: "admin", password: "rahasia" }) }); assert.strictEqual(good.status, 200);
+  const ck = good.headers.get("set-cookie"); assert(/HttpOnly/.test(ck) && /SameSite=Strict/.test(ck), ck);
+  const cookie = ck.split(";")[0];
+  assert.strictEqual((await j("/admin/api/state", { headers: { Cookie: cookie } })).status, 200);
+  assert.strictEqual((await fetch(`${base}/admin`, { headers: { Cookie: cookie } })).status, 200);
+  assert.strictEqual((await j("/admin/api/state", { headers: { Cookie: cookie.slice(0, -3) + "xyz" } })).status, 401, "cookie palsu harus ditolak");
+  // Basic Auth mati secara bawaan (supaya tombol Keluar efektif): dengan flag mati, kredensial Basic yang benar pun ditolak
+  process.env.ADMIN_ALLOW_BASIC = "0";
+  assert.strictEqual((await j("/admin/api/state", { headers: admin })).status, 401, "Basic harus ditolak saat ADMIN_ALLOW_BASIC bukan 1");
+  const lo = await fetch(`${base}/admin/api/logout`, { method: "POST", headers: { Cookie: cookie } }); assert(/Max-Age=0/.test(lo.headers.get("set-cookie")));
+  process.env.ADMIN_ALLOW_BASIC = "1";
+  for (let i = 0; i < 5; i++) await j("/admin/api/login", { method: "POST", headers: { ...JS, "X-Real-IP": "9.9.9.9" }, body: JSON.stringify({ username: "admin", password: "x" + i }) });
+  assert.strictEqual((await j("/admin/api/login", { method: "POST", headers: { ...JS, "X-Real-IP": "9.9.9.9" }, body: JSON.stringify({ username: "admin", password: "rahasia" }) })).status, 429, "harus terkunci setelah 5x salah");
+  assert.strictEqual((await j("/admin/api/login", { method: "POST", headers: { ...JS, "X-Real-IP": "8.8.8.8" }, body: JSON.stringify({ username: "admin", password: "rahasia" }) })).status, 200, "IP lain tidak ikut terkunci");
+  console.log("ok  login admin: halaman masuk, cookie sesi, cookie palsu ditolak, kunci 5x salah");
+  assert.strictEqual((await j("/api/v1/ping", { headers: { Authorization: "Bearer salahsalahsalahsalah" } })).status, 401);
+  // tanpa bucket -> 503
+  assert.strictEqual((await j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token: "abcDEF1234567890", files: [{ fid: "f", kind: "final", ext: "jpg", size: 10 }] }) })).status, 503);
+  // 2 bucket
+  for (const [n, p] of [["B1", 1], ["B2", 1]]) assert((await j("/admin/api/buckets", { method: "POST", headers: admin, body: JSON.stringify({ name: n, endpoint: `http://127.0.0.1:${s3port}`, bucket: n.toLowerCase(), accessKey: "AK", secretKey: "SK", priority: p, quotaGB: 1 }) })).body.ok);
+  const st = (await j("/admin/api/state", { headers: admin })).body; assert.strictEqual(st.buckets.length, 2); assert(!JSON.stringify(st).includes('"SK"'), "secret bocor");
+  const tst = (await j(`/admin/api/buckets/${st.buckets[0].id}/test`, { method: "POST", headers: admin })).body; assert(tst.ok, JSON.stringify(tst));
+  console.log("ok  admin: tambah bucket, tes tulis/baca, secret tersembunyi");
+
+  // sesi: final + gif + 2 raw + 1 clip
+  const token = "Sess1234567890abc";
+  const files = [{ fid: "final", kind: "final", ext: "jpg", size: 11 }, { fid: "gif", kind: "gif", ext: "gif", size: 7 }, { fid: "r1", kind: "raw", idx: 1, ext: "jpg", size: 5 }, { fid: "r2", kind: "raw", idx: 2, ext: "jpg", size: 5 }, { fid: "c1", kind: "clip", idx: 1, ext: "mp4", size: 9 }, { fid: "bad", kind: "x", ext: "exe", size: 1 }];
+  const r1 = await j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token, studioCode: "ABC", files }) });
+  assert.strictEqual(r1.status, 200); assert.strictEqual(r1.body.uploads.length, 5); assert.strictEqual(r1.body.skipped.length, 1);
+  assert.strictEqual(r1.body.shareUrl, `https://foto.example.com/s/${token}`);
+  // halaman sebelum unggah: kosong tapi tidak error
+  assert((await (await fetch(`${base}/s/${token}`)).text()).includes("diunggah"));
+  const payload = { final: "FINALJPEG..", gif: "GIF8abc", r1: "raw-1", r2: "raw-2", c1: "clip-mp4.." };
+  for (const up of r1.body.uploads) {
+    const pr = await fetch(up.url, { method: "PUT", body: payload[up.fid] }); assert(pr.ok);
+    const d = await j(`/api/v1/sessions/${token}/done`, { method: "POST", headers: A, body: JSON.stringify({ fid: up.fid }) }); assert(d.body.ok, JSON.stringify(d.body));
+  }
+  // studio lain tidak boleh memakai token sesi yang sama
+  assert.strictEqual((await j("/api/v1/sessions", { method: "POST", headers: { ...A, Authorization: "Bearer tokenstudioB0000000" }, body: JSON.stringify({ token, files: [] }) })).status, 409);
+  // kirim ulang daftar sama: tidak ada unggahan baru (idempotent)
+  assert.strictEqual((await j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token, files }) })).body.uploads.length, 0);
+  console.log("ok  sesi: presign -> unggah -> konfirmasi, idempotent, isolasi studio");
+
+  const html = await (await fetch(`${base}/s/${token}`)).text();
+  assert(html.includes("POPSNAP") && html.includes("Diambil di Studio A") && html.indexOf("Photo Frame") > 0 && html.indexOf("Photo Frame") < html.indexOf('class="card rest"') && html.includes("1 Photo") && html.includes("GIF Frame") && html.includes(`all.zip?cat=photo`) && html.includes(`all.zip?cat=live`));
+  assert(html.includes("response-content-disposition"), "tombol unduh harus memaksa download");
+  console.log("ok  halaman: tab GIF/Photo/Live, frame di atas, mentahan (carousel) di bawah, unduh paksa");
+
+  // thumbnail: file palsu (bukan gambar) -> dialihkan ke file asli; JPEG asli -> thumbnail kecil dan di-cache
+  assert(html.includes(`/s/${token}/t/final`) && html.includes(`/s/${token}/t/r1`), "halaman memakai URL thumbnail");
+  assert(!/<img src="[^"]*gif[^"]*t\/gif/.test(html) && !html.includes(`/t/gif`), "GIF tidak diberi thumbnail");
+  const tfake = await fetch(`${base}/s/${token}/t/r1`, { redirect: "manual" });
+  assert.strictEqual(tfake.status, 302); assert(tfake.headers.get("location").includes("X-Amz-Signature"));
+  assert.strictEqual((await fetch(`${base}/s/${token}/t/nope`)).status, 404);
+  assert.strictEqual((await fetch(`${base}/s/ZZZZnotfound12345/t/r1`)).status, 404);
+  let sharpOk = true; try { require("sharp"); } catch { sharpOk = false; }
+  if (sharpOk) {
+    const sharp = require("sharp");
+    const big = await sharp({ create: { width: 3000, height: 2000, channels: 3, background: { r: 200, g: 40, b: 40 } } }).jpeg({ quality: 95 }).toBuffer();
+    const tk = "Thumb12345678abc";
+    const pr0 = await j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token: tk, studioCode: "ABC", files: [{ fid: "final", kind: "final", ext: "jpg", size: big.length }] }) });
+    assert.strictEqual(pr0.status, 200);
+    assert((await fetch(pr0.body.uploads[0].url, { method: "PUT", body: big })).ok);
+    assert((await j(`/api/v1/sessions/${tk}/done`, { method: "POST", headers: A, body: JSON.stringify({ fid: "final" }) })).body.ok);
+    const t1 = await fetch(`${base}/s/${tk}/t/final`); const tb = Buffer.from(await t1.arrayBuffer());
+    assert.strictEqual(t1.status, 200); assert.strictEqual(t1.headers.get("content-type"), "image/jpeg"); assert(/max-age=86400/.test(t1.headers.get("cache-control")));
+    const meta = await sharp(tb).metadata(); assert.strictEqual(meta.width, 1200); assert(tb.length < big.length / 3, `thumbnail ${tb.length} vs ${big.length}`);
+    assert.strictEqual((await fetch(`${base}/s/${tk}/t/final`)).status, 200);
+    const urlA = (await (await fetch(`${base}/s/${tk}`)).text()).match(/href="(https?:[^"]*response-content-disposition[^"]*)"/)[1];
+    const urlB = (await (await fetch(`${base}/s/${tk}`)).text()).match(/href="(https?:[^"]*response-content-disposition[^"]*)"/)[1];
+    assert.strictEqual(urlA, urlB, "URL unduh harus stabil antar muat ulang");
+    await j(`/api/v1/sessions/${tk}`, { method: "DELETE", headers: A });
+    assert.strictEqual((await fetch(`${base}/s/${tk}/t/final`)).status, 404);
+  }
+  console.log("ok  thumbnail: redirect untuk file bukan gambar, 1200px + cache untuk JPEG, URL stabil, hilang saat sesi dihapus");
+
+  // ZIP: validasi dengan unzip
+  const zr = await fetch(`${base}/s/${token}/all.zip`); const zb = Buffer.from(await zr.arrayBuffer());
+  if (zr.headers.get("content-length")) assert.strictEqual(Number(zr.headers.get("content-length")), zb.length, "Content-Length ZIP harus pas");
+  require("fs").writeFileSync("/tmp/gal-test.zip", zb);
+  const out = require("child_process").spawnSync("unzip", ["-t", "/tmp/gal-test.zip"], { encoding: "utf8" });
+  assert(/No errors detected/.test(out.stdout), out.stdout + out.stderr);
+  const ls = require("child_process").spawnSync("unzip", ["-Z1", "/tmp/gal-test.zip"], { encoding: "utf8" }).stdout.trim().split("\n");
+  assert.strictEqual(ls.length, 5); assert(ls.includes("foto-mentah/popsnap-mentah-1.jpg") && ls.includes("klip/popsnap-klip-1.mp4"));
+  console.log("ok  ZIP streaming valid (" + ls.length + " file)");
+
+  // ZIP bisa dimatikan: tombol jadi "Unduh semua" satu per satu, link ZIP ditolak
+  assert(html.includes("All Photo (zip)") && html.includes('data-t="gif"') && html.includes('data-t="live"'));
+  await fetch(`${base}/admin/api/settings`, { method: "POST", headers: admin, body: JSON.stringify({ zipEnabled: "0" }) });
+  const h2 = await (await fetch(`${base}/s/${token}`)).text();
+  assert(!h2.includes("all.zip") && h2.includes('class="zipb dlall"'));
+  assert.strictEqual((await fetch(`${base}/s/${token}/all.zip`)).status, 404);
+  await fetch(`${base}/admin/api/settings`, { method: "POST", headers: admin, body: JSON.stringify({ zipEnabled: "2" }) });
+  const h3 = await (await fetch(`${base}/s/${token}`)).text();
+  assert(h3.includes("all.zip?cat=photo") && h3.includes("Unduh semua file") && h3.includes('class="zipb dlall"'), "mode keduanya: ZIP + unduh semua file");
+  assert.strictEqual((await fetch(`${base}/s/${token}/all.zip`)).status, 200);
+  assert.strictEqual((await j("/admin/api/state", { headers: admin })).body.zipMode, "2");
+  await fetch(`${base}/admin/api/settings`, { method: "POST", headers: admin, body: JSON.stringify({ zipEnabled: "1" }) });
+  assert.strictEqual((await fetch(`${base}/s/${token}/all.zip`)).status, 200);
+  { // ZIP per kategori: foto = hasil template + mentahan saja (tanpa GIF/klip)
+    require("fs").writeFileSync("/tmp/gal-cat.zip", Buffer.from(await (await fetch(`${base}/s/${token}/all.zip?cat=photo`)).arrayBuffer()));
+    const names = require("child_process").spawnSync("unzip", ["-Z1", "/tmp/gal-cat.zip"], { encoding: "utf8" }).stdout.trim().split("\n");
+    assert(names.some((n) => n.includes("popsnap-foto")) && names.some((n) => n.includes("mentah")) && !names.some((n) => n.includes("gif") || n.includes("klip")), names.join(","));
+  }
+  console.log("ok  pengaturan ZIP on/off + tab Photo/GIF/Live + ZIP per kategori");
+
+  // kode pendek 10 karakter: bisa diketik huruf kecil / dengan spasi-strip, halaman punya layar pembuka
+  const code = "K7M29QXH4B";
+  assert.strictEqual((await j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token: code, files: [{ fid: "final", kind: "final", ext: "jpg", size: 3 }] }) })).status, 200);
+  const hc = await fetch(`${base}/s/k7m2-9qxh-4b`); assert.strictEqual(hc.status, 200);
+  const ht = await hc.text(); assert(ht.includes('id="intro"') && ht.includes('id="go"') && ht.includes("K7M2 9QXH 4B"));
+  console.log("ok  kode pendek tidak peka huruf besar/kecil + layar pembuka");
+
+  // ---- izin foto (sosmed / mading) + status untuk kasir ----
+  {
+    const tk = "Izin1234567890xyz";
+    const mk = (extra) => ({ method: "POST", headers: A, body: JSON.stringify({ token: tk, files: [{ fid: "final", kind: "final", ext: "jpg", size: 3 }], ...extra }) });
+    assert.strictEqual((await j("/api/v1/sessions", mk({ social: 2 }))).status, 200);
+    let ls = (await j("/admin/api/sessions?social=mading", { headers: admin })).body.sessions;
+    assert(ls.some((x) => x.token === tk && x.social === 2), "sesi harus muncul di filter mading");
+    assert(!(await j("/admin/api/sessions?social=sosmed", { headers: admin })).body.sessions.some((x) => x.token === tk));
+    assert.strictEqual((await j(`/api/v1/sessions/${tk}/social`, { method: "POST", headers: A, body: JSON.stringify({ social: 3 }) })).status, 200);
+    assert((await j("/admin/api/sessions?social=sosmed", { headers: admin })).body.sessions.some((x) => x.token === tk));
+    assert.strictEqual((await j(`/api/v1/sessions/${tk}/social`, { method: "POST", headers: A, body: JSON.stringify({ social: 9 }) })).status, 400);
+    assert.strictEqual((await j(`/api/v1/sessions/${tk}/social`, { method: "POST", headers: { ...A, Authorization: "Bearer tokenstudioB0000000" }, body: JSON.stringify({ social: 0 }) })).status, 404, "studio lain tidak boleh mengubah");
+    assert.strictEqual((await j(`/api/v1/sessions/${tk}/social`, { method: "POST", headers: A, body: JSON.stringify({ social: null }) })).status, 200);
+    assert((await j("/admin/api/sessions?social=unknown", { headers: admin })).body.sessions.some((x) => x.token === tk));
+    assert.strictEqual((await j("/admin/api/sessions", {})).status, 401, "daftar sesi butuh login admin");
+    // status ringkas untuk kasir: file belum dikonfirmasi = 0, setelah done = 1
+    let st = (await j("/api/v1/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tokens: [tk, "TidakAda1234567", "bad!"] }) })).body.sessions;
+    assert.strictEqual(st[tk].exists, true); assert.strictEqual(st[tk].files, 0); assert.strictEqual(st.TidakAda1234567.exists, false); assert(!("bad!" in st));
+  }
+  console.log("ok  izin foto: simpan, ubah, filter admin, isolasi studio, status ringkas untuk kasir");
+
+  // ---- unggah manual dari website (PC CS) ----
+  const mt = "Manual1234567890x";
+  const prep = await j("/admin/api/upload/prepare", { method: "POST", headers: admin, body: JSON.stringify({ token: mt, studio: "Studio A", studioCode: "ABC", mode: "photo", files: [{ fid: "final", kind: "final", ext: "png", size: 8 }, { fid: "raw1", kind: "raw", idx: 1, ext: "jpg", size: 6 }] }) });
+  assert.strictEqual(prep.status, 200); assert.strictEqual(prep.body.uploads.length, 2);
+  assert.strictEqual((await j("/admin/api/upload/prepare", { method: "POST", headers: {} , body: "{}" })).status, 401);
+  for (const [fid, data] of [["final", "PNGDATA!"], ["raw1", "JPEG-1"]]) {
+    const pr = await fetch(`${base}/admin/api/upload/${mt}/${fid}`, { method: "PUT", headers: { ...admin, "Content-Type": "application/octet-stream" }, body: data });
+    assert.strictEqual(pr.status, 200, await pr.text());
+  }
+  const mh = await (await fetch(`${base}/s/${mt}`)).text(); assert(mh.includes("Foto template") && mh.includes("Foto mentah 1") && mh.includes("Studio A"));
+  const keys = [...store.keys()].filter((k) => k.includes(mt)); assert.strictEqual(keys.length, 2);
+  assert.strictEqual(store.get(keys.find((k) => k.endsWith("final.png"))).toString(), "PNGDATA!");
+  // kasir menarik sesi hasil unggah manual lewat kunci bersama: tanpa kunci (atau kunci salah) ditolak
+  delete process.env.KASIR_API_KEY;
+  assert.strictEqual((await fetch(`${base}/api/v1/recent`)).status, 401, "tanpa KASIR_API_KEY endpoint harus mati");
+  process.env.KASIR_API_KEY = "kunci-kasir-rahasia";
+  assert.strictEqual((await fetch(`${base}/api/v1/recent`, { headers: { Authorization: "Bearer salah" } })).status, 401);
+  const rec = await (await fetch(`${base}/api/v1/recent?days=2`, { headers: { Authorization: "Bearer kunci-kasir-rahasia" } })).json();
+  const recMine = rec.sessions.find((x) => x.token === mt);
+  assert(recMine && recMine.studio === "Studio A" && recMine.code === "ABC" && recMine.mode === "photo" && recMine.files === 2 && recMine.uploaded === 2, JSON.stringify(rec));
+  assert(!JSON.stringify(rec).includes("PNGDATA"), "tidak boleh membawa isi file");
+  delete process.env.KASIR_API_KEY;
+  console.log("ok  kasir menarik sesi unggah manual lewat kunci bersama (tanpa kunci = mati)");
+  // booth menyusul (internet pulih): mengambil alih sesi manual & tidak mengunggah ulang file yang sudah ada
+  const Bt = { Authorization: "Bearer tokenstudioB0000000", "Content-Type": "application/json" };
+  const adopt = await j("/api/v1/sessions", { method: "POST", headers: Bt, body: JSON.stringify({ token: mt, files: [{ fid: "final", kind: "final", ext: "png", size: 8 }, { fid: "raw1", kind: "raw", idx: 1, ext: "jpg", size: 6 }, { fid: "gif", kind: "gif", ext: "gif", size: 7 }] }) });
+  assert.strictEqual(adopt.status, 200); assert.strictEqual(adopt.body.uploads.length, 1, "hanya file baru (gif) yang perlu diunggah");
+  console.log("ok  unggah manual dari website: stream ke cloud, link hidup, booth menyusul mengambil alih");
+
+  // ---- booth menghapus sesi (transaksi dihapus di kasir) ----
+  const Bd = { Authorization: "Bearer tokenstudioB0000000" }, Ad = { Authorization: "Bearer tokenstudioA0000000" };
+  assert.strictEqual((await fetch(`${base}/api/v1/sessions/${code}`, { method: "DELETE", headers: Bd })).status, 404, "studio lain tidak boleh menghapus");
+  assert.strictEqual((await fetch(`${base}/api/v1/sessions/${code}`, { method: "DELETE" })).status, 401);
+  assert.strictEqual((await fetch(`${base}/s/${code}`)).status, 200);
+  const del = await j(`/api/v1/sessions/${code}`, { method: "DELETE", headers: Ad }); assert.strictEqual(del.status, 200); assert(del.body.ok && del.body.deleted, JSON.stringify(del.body));
+  assert.strictEqual((await fetch(`${base}/s/${code}`)).status, 404, "halaman harus langsung tidak bisa dibuka");
+  assert.strictEqual(require("../src/db").db.prepare("SELECT COUNT(*) n FROM sessions WHERE token = ?").get(code).n, 0);
+  assert.strictEqual((await fetch(`${base}/api/v1/sessions/${code}`, { method: "DELETE", headers: Ad })).status, 404, "sudah terhapus -> 404 (booth menganggap selesai)");
+  console.log("ok  hapus sesi dari booth: hanya pemilik, halaman 404, file & catatan dibersihkan, idempoten");
+
+  // ---- admin: kelola link pelanggan ----
+  const mk = async (tk, fid = "final") => { const r = await j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token: tk, studioCode: "ABC", files: [{ fid, kind: "final", ext: "jpg", size: 6 }] }) }); assert.strictEqual(r.status, 200); await fetch(r.body.uploads[0].url, { method: "PUT", body: "JPEG-1" }); await j(`/api/v1/sessions/${tk}/done`, { method: "POST", headers: A, body: JSON.stringify({ fid }) }); };
+  await mk("KELOLA2345"); await mk("KELOLB6789");
+  assert.strictEqual((await fetch(`${base}/admin/api/sessions`)).status, 401, "butuh login admin");
+  const l1 = (await j("/admin/api/sessions?limit=100", { headers: admin })).body;
+  assert(l1.total >= 2 && l1.sessions.some((x) => x.token === "KELOLA2345" && x.files === 1 && x.bytes === 6 && x.manual === false && x.studio === "Studio A"), JSON.stringify(l1.sessions[0]));
+  assert.strictEqual((await j("/admin/api/sessions?q=kelol%20a2345", { headers: admin })).body.total, 1, "cari kode tak peka huruf/spasi");
+  assert.strictEqual((await j("/admin/api/sessions?q=%25", { headers: admin })).body.total, 0, "tanda % dicari apa adanya, bukan wildcard");
+  assert.strictEqual((await j("/admin/api/sessions?source=manual&q=KELOL", { headers: admin })).body.total, 0);
+  assert.strictEqual((await j("/admin/api/sessions?limit=1&offset=1", { headers: admin })).body.sessions.length, 1);
+  const tgt = Date.now() + 20 * 86400000;
+  assert.strictEqual((await j("/admin/api/sessions/KELOLA2345", { method: "POST", headers: admin, body: JSON.stringify({ expiresAt: tgt, studio: "Studio <b>Baru</b>" }) })).status, 200);
+  const l2 = (await j("/admin/api/sessions?q=KELOLA2345", { headers: admin })).body.sessions[0];
+  assert.strictEqual(l2.expiresAt, Math.round(tgt)); assert.strictEqual(l2.studio, "Studio bBaru/b");
+  assert.strictEqual((await j("/admin/api/sessions/KELOLA2345", { method: "POST", headers: admin, body: JSON.stringify({ expiresAt: Date.now() - 1000 }) })).status, 400, "tidak boleh di masa lalu");
+  assert.strictEqual((await j("/admin/api/sessions/KELOLA2345", { method: "POST", headers: admin, body: JSON.stringify({ expiresAt: Date.now() + 9999 * 86400000 }) })).status, 400, "batas maksimal");
+  assert.strictEqual((await j("/admin/api/sessions/TIDAKADA123", { method: "POST", headers: admin, body: JSON.stringify({ studio: "x" }) })).status, 404);
+  const expBefore = (await j("/admin/api/sessions?q=KELOLB6789", { headers: admin })).body.sessions[0].expiresAt;
+  const ext = await j("/admin/api/sessions-bulk", { method: "POST", headers: admin, body: JSON.stringify({ action: "extend", days: 3, tokens: ["KELOLB6789"] }) });
+  assert(ext.body.ok && ext.body.done === 1);
+  assert.strictEqual((await j("/admin/api/sessions?q=KELOLB6789", { headers: admin })).body.sessions[0].expiresAt, expBefore + 3 * 86400000);
+  assert.strictEqual((await fetch(`${base}/s/KELOLA2345`)).status, 200);
+  const dd = await j("/admin/api/sessions/KELOLA2345", { method: "DELETE", headers: admin }); assert(dd.body.ok && dd.body.deleted);
+  assert.strictEqual((await fetch(`${base}/s/KELOLA2345`)).status, 404, "link mati setelah dihapus");
+  const bd = await j("/admin/api/sessions-bulk", { method: "POST", headers: admin, body: JSON.stringify({ action: "delete", tokens: ["KELOLB6789", "TIDAKADA123"] }) });
+  assert(bd.body.ok && bd.body.done === 1 && bd.body.pending === 0, JSON.stringify(bd.body));
+  assert.strictEqual((await j("/admin/api/sessions?q=KELOL", { headers: admin })).body.total, 0);
+  assert.strictEqual((await j("/admin/api/sessions-bulk", { method: "POST", headers: admin, body: JSON.stringify({ action: "x", tokens: ["A"] }) })).status, 400);
+  console.log("ok  admin link pelanggan: daftar/cari/filter, ubah masa berlaku & studio, hapus satuan & massal, perpanjang massal");
+
+  // ---- admin: kelola studio (kasir tetap pemilik daftar; galeri memantau & mengatur) ----
+  const Bh = { Authorization: "Bearer tokenstudioB0000000", "Content-Type": "application/json" };
+  assert.strictEqual((await fetch(`${base}/admin/api/studios`)).status, 401);
+  assert((await fetch(`${base}/api/v1/ping`, { headers: Bh })).ok);
+  let sl = (await j("/admin/api/studios", { headers: admin })).body;
+  const stA = sl.studios.find((x) => x.key === "studio a"), stB = sl.studios.find((x) => x.key === "studio b");
+  assert(stA && stA.status === "online" && stA.sessions >= 0 && stB && stB.status === "online" && stB.lastEvent === "ping", JSON.stringify(stB));
+  assert(sl.counts.online >= 2);
+  // tambah + duplikat
+  assert.strictEqual((await j("/admin/api/studios", { method: "POST", headers: admin, body: JSON.stringify({ name: "Studio Cadangan", note: "Cabang Bandung", retentionDays: 14 }) })).status, 200);
+  assert.strictEqual((await j("/admin/api/studios", { method: "POST", headers: admin, body: JSON.stringify({ name: "STUDIO cadangan" }) })).status, 409);
+  const cad = (await j("/admin/api/studios", { headers: admin })).body.studios.find((x) => x.key === "studio cadangan");
+  assert(cad.status === "never" && cad.note === "Cabang Bandung" && cad.retentionDays === 14);
+  // masa simpan per studio dipakai sesi baru
+  assert.strictEqual((await j("/admin/api/studios/studio%20b", { method: "POST", headers: admin, body: JSON.stringify({ retentionDays: 3, note: "Lantai 2" }) })).status, 200);
+  const rs = await j("/api/v1/sessions", { method: "POST", headers: Bh, body: JSON.stringify({ token: "BRetain12345678", studioCode: "BBB", files: [{ fid: "final", kind: "final", ext: "jpg", size: 6 }] }) });
+  assert.strictEqual(rs.status, 200);
+  const exp = (await j("/admin/api/sessions?q=BRetain12345678", { headers: admin })).body.sessions[0];
+  assert(Math.abs(exp.expiresAt - exp.createdAt - 3 * 86400000) < 5000, "masa simpan 3 hari ikut pengaturan studio");
+  // putuskan: semua panggilan booth ditolak; sambungkan lagi
+  assert.strictEqual((await j("/admin/api/studios/studio%20b", { method: "POST", headers: admin, body: JSON.stringify({ blocked: true }) })).status, 200);
+  const p403 = await fetch(`${base}/api/v1/ping`, { headers: Bh }); assert.strictEqual(p403.status, 403); assert.strictEqual((await p403.json()).blocked, true);
+  assert.strictEqual((await j("/api/v1/sessions", { method: "POST", headers: Bh, body: JSON.stringify({ token: "BBlocked1234567", files: [] }) })).status, 403);
+  assert.strictEqual((await j("/api/v1/sessions/BRetain12345678/done", { method: "POST", headers: Bh, body: JSON.stringify({ fid: "final" }) })).status, 403);
+  assert.strictEqual((await fetch(`${base}/api/v1/sessions/BRetain12345678`, { method: "DELETE", headers: Bh })).status, 403);
+  assert.strictEqual((await fetch(`${base}/api/v1/ping`, { headers: A })).status, 200, "studio lain tidak terpengaruh");
+  assert.strictEqual((await j("/admin/api/studios", { headers: admin })).body.studios.find((x) => x.key === "studio b").status, "blocked");
+  assert.strictEqual((await fetch(`${base}/admin/api/studios/studio%20b`, { method: "DELETE", headers: admin })).status, 400, "tidak boleh dihapus saat diputus");
+  assert.strictEqual((await j("/admin/api/studios/studio%20b", { method: "POST", headers: admin, body: JSON.stringify({ blocked: false }) })).status, 200);
+  assert.strictEqual((await fetch(`${base}/api/v1/ping`, { headers: Bh })).status, 200);
+  // hapus: butuh purge bila masih punya link
+  const d409 = await fetch(`${base}/admin/api/studios/studio%20b`, { method: "DELETE", headers: admin }); assert.strictEqual(d409.status, 409);
+  const dpg = await j("/admin/api/studios/studio%20b?purge=1", { method: "DELETE", headers: admin }); assert(dpg.body.ok && dpg.body.deleted && dpg.body.purged >= 1, JSON.stringify(dpg.body));
+  assert.strictEqual((await fetch(`${base}/s/BRetain12345678`)).status, 404);
+  assert.strictEqual((await j("/admin/api/studios", { method: "DELETE", headers: admin })).status, 404);
+  // studio muncul lagi otomatis begitu booth menghubungi (kasir pemilik daftar)
+  assert((await fetch(`${base}/api/v1/ping`, { headers: Bh })).ok);
+  assert((await j("/admin/api/studios", { headers: admin })).body.studios.some((x) => x.key === "studio b"));
+  // nama kembar digabung: ubah nama "Studio Cadangan" jadi "studio a" -> sesi & catatan ikut studio yang sudah ada
+  const mg = await j("/admin/api/studios/studio%20cadangan", { method: "POST", headers: admin, body: JSON.stringify({ name: "STUDIO A" }) });
+  assert(mg.body.ok && mg.body.merged === true, JSON.stringify(mg.body));
+  assert(!(await j("/admin/api/studios", { headers: admin })).body.studios.some((x) => x.key === "studio cadangan"));
+  // nama diganti admin dikunci; nama diganti di kasir (token sama, nama beda) ikut berubah bila tidak dikunci
+  assert.strictEqual((await j("/admin/api/studios/studio%20a", { method: "POST", headers: admin, body: JSON.stringify({ name: "Studio Alpha" }) })).status, 200);
+  assert.strictEqual((await j("/admin/api/studios", { headers: admin })).body.studios.find((x) => x.key === "studio alpha").name, "Studio Alpha");
+  assert((await fetch(`${base}/api/v1/ping`, { headers: A })).ok);
+  assert((await j("/admin/api/studios", { headers: admin })).body.studios.some((x) => x.key === "studio alpha" && x.nameLocked), "nama admin tetap meski kasir mengirim nama lama");
+  process.env.STUDIO_TOKENS = "tokenstudioA0000000:Studio A,tokenstudioB0000000:Studio Bee";
+  assert((await fetch(`${base}/api/v1/ping`, { headers: Bh })).ok);
+  assert((await j("/admin/api/studios", { headers: admin })).body.studios.some((x) => x.key === "studio bee" && x.name === "Studio Bee"), "nama baru dari kasir ikut");
+  assert((await j("/admin/api/state", { headers: admin })).body.studios.length >= 2);
+  console.log("ok  admin studio: status online/offline, tambah, edit, masa simpan per studio, putuskan/sambungkan, hapus, gabung nama, ikut nama kasir");
+
+  // ---- kesehatan bucket + cek koneksi menyeluruh ----
+  const addBad = await j("/admin/api/buckets", { method: "POST", headers: admin, body: JSON.stringify({ name: "Salah", endpoint: `http://127.0.0.1:${s3port}`, bucket: "bad", accessKey: "SALAH", secretKey: "SALAH", priority: 0, quotaGB: 1 }) });
+  assert(addBad.body.ok && addBad.body.test && addBad.body.test.ok === false && /403/.test(addBad.body.test.error), "key salah ketahuan saat disimpan: " + JSON.stringify(addBad.body));
+  const stH = (await j("/admin/api/state", { headers: admin })).body.buckets.find((x) => x.name === "Salah");
+  assert.strictEqual(stH.health, "bad"); assert(/403/.test(stH.healthMsg));
+  const hs = await j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token: "HealthChk123456", files: [{ fid: "final", kind: "final", ext: "jpg", size: 6 }] }) });
+  assert.strictEqual(hs.status, 200); assert(!hs.body.uploads[0].url.includes("/bad/"), "bucket bermasalah dilewati walau prioritas teratas: " + hs.body.uploads[0].url.slice(0, 60));
+  const dg = (await j("/admin/api/diagnostics", { method: "POST", headers: admin })).body;
+  const dBad = dg.buckets.find((x) => x.name === "Salah"), dOk = dg.buckets.find((x) => x.name === "B1");
+  assert(dBad && dBad.ok === false && /403/.test(dBad.error) && dOk && dOk.ok === true, JSON.stringify(dg.buckets));
+  assert(dg.kasir && dg.kasir.ok === true && dg.kasir.configured === false, JSON.stringify(dg.kasir));
+  // perbaiki key (di tiruan: ganti nama bucket) -> tes ulang sehat
+  const fix = await j("/admin/api/buckets", { method: "POST", headers: admin, body: JSON.stringify({ id: addBad.body.id, name: "Salah", endpoint: `http://127.0.0.1:${s3port}`, bucket: "good", accessKey: "AK", secretKey: "SK", priority: 0, quotaGB: 1 }) });
+  assert(fix.body.ok && fix.body.test.ok === true);
+  assert.strictEqual((await j("/admin/api/state", { headers: admin })).body.buckets.find((x) => x.name === "Salah").health, "ok");
+  assert((await j(`/admin/api/buckets/${addBad.body.id}`, { method: "DELETE", headers: admin })).status < 300);
+  // laporan sinkron dari booth
+  assert.strictEqual((await j("/api/v1/heartbeat", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status, 401);
+  const hbs = async (body, h = Bh) => j("/api/v1/heartbeat", { method: "POST", headers: h, body: JSON.stringify(body) });
+  const stateOf = async (key) => (await j("/admin/api/diagnostics", { method: "POST", headers: admin })).body.studios.find((x) => x.key === key);
+  assert(!/lancar/.test((await stateOf("studio bee")).note), "belum melapor");
+  assert.strictEqual((await stateOf("studio bee")).state, "unknown");
+  assert((await hbs({ pendingSessions: 0, sessionsWithErrors: 0, filesUploaded: 40, kasir: { ok: true } })).body.ok);
+  assert.strictEqual((await stateOf("studio bee")).state, "ok");
+  await hbs({ pendingSessions: 3, sessionsWithErrors: 0 }); let ds = await stateOf("studio bee"); assert.strictEqual(ds.state, "queue"); assert(/3 sesi/.test(ds.note));
+  await hbs({ pendingSessions: 3, sessionsWithErrors: 2, lastError: "Cloud menolak unggahan (HTTP 403)." }); ds = await stateOf("studio bee"); assert.strictEqual(ds.state, "warn"); assert(/403/.test(ds.note));
+  await hbs({ pendingSessions: 0, sessionsWithErrors: 0, kasir: { ok: false, error: "Kasir tidak menjawab (timeout)" } }); ds = await stateOf("studio bee"); assert.strictEqual(ds.state, "warn"); assert(/kasir/i.test(ds.note));
+  await j("/admin/api/studios/studio%20bee", { method: "POST", headers: admin, body: JSON.stringify({ blocked: true }) });
+  assert.strictEqual((await hbs({})).status, 403); assert.strictEqual((await stateOf("studio bee")).state, "blocked");
+  await j("/admin/api/studios/studio%20bee", { method: "POST", headers: admin, body: JSON.stringify({ blocked: false }) });
+  console.log("ok  cek koneksi: key bucket salah ketahuan & dilewati, tes ulang pulih, kasir, laporan sinkron booth (lancar/antre/error/kasir/diputus)");
+
+  // bagi rata antar bucket sama-prioritas
+  const used = (await j("/admin/api/state", { headers: admin })).body.buckets; assert(used.every((b) => b.usedGB >= 0));
+  // kedaluwarsa + hapus otomatis
+  const { db } = require("../src/db"); db.prepare("UPDATE sessions SET expires_at = 1 WHERE token = ?").run(token);
+  assert.strictEqual((await fetch(`${base}/s/${token}`)).status, 404);
+  const before = store.size; const removed = await cleanup(); assert.strictEqual(removed, 1);
+  assert(store.size < before && ![...store.keys()].some((k) => k.includes(token)), "file cloud harus terhapus");
+  assert.strictEqual(db.prepare("SELECT COUNT(*) n FROM files WHERE token = ?").get(token).n, 0);
+  console.log("ok  kedaluwarsa: halaman 404, file di cloud terhapus, catatan dibersihkan");
+  // ---- objek yatim di cloud: tidak boleh tertinggal ----
+  { const put = (u) => fetch(u, { method: "PUT", body: "x" });
+    const ST = (token, extra = {}) => j("/api/v1/sessions", { method: "POST", headers: A, body: JSON.stringify({ token, studioCode: "ORF", files: [{ fid: "f1", kind: "final", ext: "jpg", size: 1 }], ...extra }) });
+    // 1) unggah sampai ke cloud tapi booth tak sempat konfirmasi: setelah 2 hari catatan pending dibuang -> objeknya ikut dihapus
+    const t1 = "ORPHANAAA11"; const r1 = await ST(t1); await put(r1.body.uploads[0].url);
+    const k1 = [...store.keys()].find((k) => k.includes(t1)); assert(k1, "objek terunggah");
+    db.prepare("UPDATE files SET created_at = ? WHERE token = ?").run(Date.now() - 3 * 86400000, t1);
+    await cleanup();
+    assert(!store.has(k1), "objek pending basi harus ikut terhapus dari cloud"); assert.strictEqual(db.prepare("SELECT COUNT(*) n FROM files WHERE token = ?").get(t1).n, 0);
+    // 2) retry berpindah bucket: objek di bucket lama tidak boleh jadi yatim
+    const t2 = "RETRYBBB222"; const q1 = await ST(t2); await put(q1.body.uploads[0].url);
+    const old = [...store.keys()].find((k) => k.includes(t2));
+    const q2 = await ST(t2, { retry: "f1" }); await put(q2.body.uploads[0].url);
+    await j(`/api/v1/sessions/${t2}/done`, { method: "POST", headers: A, body: JSON.stringify({ fid: "f1" }) });
+    const now2 = [...store.keys()].filter((k) => k.includes(t2));
+    if (now2.length > 1) { await cleanup(); }
+    const left = [...store.keys()].filter((k) => k.includes(t2)); assert.strictEqual(left.length, 1, "tinggal satu objek setelah retry: " + left.join(","));
+    assert.strictEqual(db.prepare("SELECT COUNT(*) n FROM trash").get().n, 0, "sampah kosong setelah dibersihkan");
+    // 3) pindai bucket: yatim terdeteksi, hanya yang berumur > 24 jam & berpola galeri yang dihapus, objek lain tidak disentuh
+    const bid = db.prepare("SELECT bucket_id b FROM files WHERE token = ?").get(t2).b, bname = db.prepare("SELECT bucket FROM buckets WHERE id = ?").get(bid).bucket;
+    store.set(`/${bname}/ORF/202601/YATIMLAMA11/x1.jpg`, Buffer.from("a")); mod.set(`/${bname}/ORF/202601/YATIMLAMA11/x1.jpg`, Date.now() - 3 * 86400000);
+    store.set(`/${bname}/ORF/202611/YATIMBARU22/x2.jpg`, Buffer.from("b")); // baru: mungkin unggahan berjalan
+    store.set(`/${bname}/catatan-pribadi/readme.txt`, Buffer.from("c")); mod.set(`/${bname}/catatan-pribadi/readme.txt`, Date.now() - 9 * 86400000);
+    const sc = await j(`/admin/api/buckets/${bid}/scan`, { method: "POST", headers: admin, body: "{}" });
+    assert(sc.body.ok && sc.body.orphans.count === 2 && sc.body.otherObjects >= 1, JSON.stringify(sc.body)); assert(store.has(`/${bname}/ORF/202601/YATIMLAMA11/x1.jpg`), "pindai saja tidak menghapus");
+    const dl = await j(`/admin/api/buckets/${bid}/scan`, { method: "POST", headers: admin, body: JSON.stringify({ delete: true }) });
+    assert(dl.body.deleted === 1 && dl.body.tooYoung === 1, JSON.stringify(dl.body));
+    assert(!store.has(`/${bname}/ORF/202601/YATIMLAMA11/x1.jpg`) && store.has(`/${bname}/ORF/202611/YATIMBARU22/x2.jpg`) && store.has(`/${bname}/catatan-pribadi/readme.txt`), "yang baru & milik orang lain tidak disentuh");
+    // 4) unggah manual dengan kode huruf kecil / bertanda hubung: jalur unggah memakai kode yang sudah dinormalkan
+    const mp = await j("/admin/api/upload/prepare", { method: "POST", headers: admin, body: JSON.stringify({ studio: "Studio A", token: "mnpq-rstu-vw", files: [{ fid: "m1", kind: "final", ext: "jpg", size: 1 }] }) });
+    assert.strictEqual(mp.status, 200, JSON.stringify(mp.body)); const up = await fetch(base + mp.body.uploads[0].path, { method: "PUT", headers: { ...admin, "Content-Type": "image/jpeg" }, body: "x" });
+    assert.strictEqual(up.status, 200, "unggah manual dengan kode tidak baku harus tetap jalan: " + up.status);
+    console.log("ok  objek yatim di cloud: pending basi, pindah bucket saat retry, pindai bucket (aman untuk file lain), unggah manual kode tidak baku");
+  }
+  // ---- pengguna & hak akses ----
+  {
+    const J = (m, body, h = admin) => j(m[0] === "/" ? m : m, { method: body === undefined ? "GET" : "POST", headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+    const login = async (username, password) => { const r = await fetch(base + "/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) }); const c = (r.headers.get("set-cookie") || "").split(";")[0]; return { status: r.status, h: { Cookie: c, "Content-Type": "application/json" } }; };
+    const cr = await J("/admin/api/users", { username: "Rina", name: "Rina CS", password: "sandi-rina-1", role: "staff", perms: ["upload", "studio.edit", "xx.bukan"] });
+    assert(cr.body.ok, JSON.stringify(cr.body)); const rid = cr.body.id;
+    assert.strictEqual((await J("/admin/api/users", { username: "rina", password: "sandi-lain-123" })).status, 409, "username kembar");
+    assert.strictEqual((await J("/admin/api/users", { username: "admin", password: "sandi-lain-123" })).status, 409, "username admin utama dilarang");
+    assert.strictEqual((await J("/admin/api/users", { username: "abc", password: "pendek" })).status, 400, "sandi pendek");
+    const lst = (await J("/admin/api/users")).body.users.find((u) => u.id === rid);
+    assert.deepStrictEqual(lst.perms, ["studio.view", "studio.edit", "link.view", "upload"], "hak dinormalkan (edit => lihat, hak asing dibuang): " + lst.perms);
+    assert(!JSON.stringify(lst).includes("pass"), "hash sandi tidak boleh bocor");
+    { // data hak akses rusak di database: daftar pengguna & ubah pengguna tidak boleh error 500, akunnya cukup tanpa hak
+      const { db } = require("../src/db");
+      db.prepare("UPDATE users SET perms = ? WHERE id = ?").run("{rusak", rid);
+      const bad = await J("/admin/api/users");
+      assert.strictEqual(bad.status, 200, "daftar pengguna harus tetap terbuka walau ada data hak yang rusak");
+      assert.deepStrictEqual(bad.body.users.find((u) => u.id === rid).perms, [], "data rusak = tanpa hak");
+      assert((await J("/admin/api/users/" + rid, { name: "Rina CS" })).body.ok, "ubah nama pengguna dengan hak rusak harus tetap bisa");
+      db.prepare("UPDATE users SET perms = ? WHERE id = ?").run(JSON.stringify(["studio.view", "studio.edit", "link.view", "upload"]), rid); // kembalikan untuk tes berikutnya
+    }
+    assert.strictEqual((await login("rina", "salah-salah")).status, 401);
+    const R = await login("Rina", "sandi-rina-1"); assert.strictEqual(R.status, 200, "login pengguna");
+    const me = (await J("/admin/api/me", undefined, R.h)).body; assert(!me.admin && me.perms.includes("upload") && !me.perms.includes("storage.edit"), JSON.stringify(me));
+    // boleh
+    assert.strictEqual((await J("/admin/api/studios", undefined, R.h)).status, 200); assert.strictEqual((await J("/admin/api/sessions", undefined, R.h)).status, 200);
+    assert.strictEqual((await J("/admin/api/upload/prepare", { studio: "Studio A", token: "rina-test-xy7", files: [] }, R.h)).status !== 403, true, "upload diizinkan");
+    // dilarang (403) di tiap area
+    for (const [m, u, b] of [["POST", "/admin/api/buckets", {}], ["POST", "/admin/api/settings", { retentionDays: 3 }], ["POST", "/admin/api/diagnostics", {}], ["POST", "/admin/api/sessions-bulk", {}], ["POST", "/admin/api/users", { username: "xyz", password: "12345678" }]])
+      assert.strictEqual((await j(u, { method: m, headers: R.h, body: JSON.stringify(b) })).status, 403, "harus 403: " + u);
+    assert.strictEqual((await j("/admin/api/users", { headers: R.h })).status, 403, "pengguna biasa tidak boleh melihat daftar pengguna");
+    assert.strictEqual((await j("/admin/api/buckets/1/scan", { method: "POST", headers: R.h, body: "{}" })).status, 403);
+    const stt = (await J("/admin/api/state", undefined, R.h)).body; assert(stt.buckets.every((b) => !b.endpoint && !b.accessKey && !b.bucket), "detail bucket disembunyikan tanpa hak lihat penyimpanan");
+    // ubah hak: berlaku langsung tanpa login ulang
+    assert((await J("/admin/api/users/" + rid, { perms: ["storage.view", "link.edit"] })).body.ok);
+    assert.strictEqual((await J("/admin/api/diagnostics", {}, R.h)).status, 200, "hak baru langsung berlaku");
+    assert.strictEqual((await J("/admin/api/upload/prepare", { studio: "Studio A", token: "rina-test-xy8", files: [] }, R.h)).status, 403, "hak lama langsung dicabut");
+    // ganti sandi sendiri: sesi lama mati, yang baru hidup
+    assert.strictEqual((await J("/admin/api/me/password", { current: "salah", password: "sandi-baru-123" }, R.h)).status, 400);
+    const pw = await fetch(base + "/admin/api/me/password", { method: "POST", headers: R.h, body: JSON.stringify({ current: "sandi-rina-1", password: "sandi-baru-123" }) }); assert.strictEqual(pw.status, 200);
+    assert.strictEqual((await J("/admin/api/me", undefined, R.h)).status, 401, "cookie lama tidak berlaku setelah sandi berganti");
+    const H2 = { Cookie: pw.headers.get("set-cookie").split(";")[0], "Content-Type": "application/json" }; assert.strictEqual((await J("/admin/api/me", undefined, H2)).status, 200, "cookie baru dari respons jalan");
+    assert.strictEqual((await login("rina", "sandi-rina-1")).status, 401); const R2 = await login("rina", "sandi-baru-123"); assert.strictEqual(R2.status, 200);
+    // nonaktif = langsung keluar; admin tidak bisa menurunkan diri; hapus
+    assert((await J("/admin/api/users/" + rid, { active: false })).body.ok);
+    assert.strictEqual((await J("/admin/api/me", undefined, R2.h)).status, 401, "akun nonaktif langsung ditolak"); assert.strictEqual((await login("rina", "sandi-baru-123")).status, 401);
+    // admin DB: akses penuh, tidak bisa menurunkan/menghapus dirinya sendiri
+    const ca = await J("/admin/api/users", { username: "bos", password: "sandi-bos-123", role: "admin" }); assert(ca.body.ok);
+    const B = await login("bos", "sandi-bos-123"); assert.strictEqual((await J("/admin/api/users", undefined, B.h)).status, 200); assert.strictEqual((await J("/admin/api/diagnostics", {}, B.h)).status, 200);
+    assert.strictEqual((await J("/admin/api/users/" + ca.body.id, { role: "staff" }, B.h)).status, 400); assert.strictEqual((await j("/admin/api/users/" + ca.body.id, { method: "DELETE", headers: B.h })).status, 400);
+    assert((await (await fetch(base + "/admin/api/users/" + rid, { method: "DELETE", headers: admin })).json()).deleted);
+    assert.strictEqual((await J("/admin/api/users/" + ca.body.id + "x", {})).status, 404);
+    // akun .env tetap admin penuh & cookie lama (tanpa id) masih jalan
+    assert((await J("/admin/api/me")).body.env === true);
+    console.log("ok  pengguna & hak akses: buat/ubah/hapus, 403 per area, hak berlaku langsung, ganti sandi & nonaktif memutus sesi, admin penuh");
+  }
+  srv.close(); s3.close(); process.exit(0);
+})().catch((e) => { console.error("GAGAL:", e); process.exit(1); });
