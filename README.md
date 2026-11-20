@@ -91,3 +91,12 @@ Galeri ini sekaligus menjadi pusat pengelolaan banyak studio:
 * Uji: `npm test` (termasuk `test/tenant.js`: isolasi antar klien, hak akun klien, siklus token booth).
 
 Berikutnya: riwayat transaksi & omzet per studio/klien, status booth (kamera/printer/kertas) + alert, atur pengaturan booth dari web.
+
+## Riwayat transaksi (tahap 2)
+
+Galeri ini menggantikan aplikasi kasir. Booth memakai **protokol yang sama seperti dulu** (`/api/photobox/ping | transactions | changes`), jadi booth tidak perlu diubah: di booth, isi *alamat kasir* dan *alamat galeri* dengan alamat galeri ini, dan *token* dengan token booth dari menu Studio.
+
+* Menu **Transaksi** (hak `tx.view`): filter tanggal / studio / status / cari, ringkasan omzet, omzet per hari, tabel, ekspor CSV. Omzet = lunas dan bukan TEST. Zona waktu laporan WIB (`REPORT_TZ_OFFSET_MIN`, bawaan 420).
+* Koreksi (hak `tx.edit`, tidak pernah dimiliki akun klien): tandai TEST / hapus. Booth menarik perubahan ini otomatis dan menyesuaikan angkanya.
+* Pemilik transaksi selalu diambil dari token booth. Akun klien hanya melihat transaksi studionya. Link galeri dihitung dari sesi, bukan dari isi kiriman booth. CSV menetralkan rumus Excel.
+* Uji: `node test/transaksi.js`.

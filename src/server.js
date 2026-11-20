@@ -440,19 +440,21 @@ const PERMS = {
   "link.view": "Lihat link pelanggan", "link.edit": "Atur link: perpanjang, nonaktifkan, hapus", "upload": "Unggah manual foto",
   "storage.view": "Lihat penyimpanan cloud & cek koneksi", "storage.edit": "Tambah/ubah/hapus bucket",
   "settings.edit": "Ubah pengaturan umum",
+  "tx.view": "Lihat riwayat transaksi & omzet", "tx.edit": "Tandai TEST / hapus transaksi",
 };
 const PRESETS = [
   { id: "cs", label: "Kasir / CS", perms: ["studio.view", "link.view", "upload"] },
-  { id: "manajer", label: "Manajer", perms: ["studio.view", "studio.edit", "link.view", "link.edit", "upload", "storage.view"] },
-  { id: "lihat", label: "Hanya lihat", perms: ["studio.view", "link.view", "storage.view"] },
+  { id: "manajer", label: "Manajer", perms: ["studio.view", "studio.edit", "link.view", "link.edit", "upload", "storage.view", "tx.view"] },
+  { id: "keuangan", label: "Keuangan", perms: ["studio.view", "tx.view"] },
+  { id: "lihat", label: "Hanya lihat", perms: ["studio.view", "link.view", "storage.view", "tx.view"] },
 ];
-const IMPLIES = { "studio.edit": "studio.view", "link.edit": "link.view", "upload": "link.view", "storage.edit": "storage.view" };
+const IMPLIES = { "tx.edit": "tx.view", "studio.edit": "studio.view", "link.edit": "link.view", "upload": "link.view", "storage.edit": "storage.view" };
 const normPerms = (list) => { const set = new Set((Array.isArray(list) ? list : []).map(String).filter((x) => x in PERMS)); for (const [k, v] of Object.entries(IMPLIES)) if (set.has(k)) set.add(v); return Object.keys(PERMS).filter((k) => set.has(k)); };
 const parsePerms = (raw) => { try { const v = JSON.parse(raw || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }; // data hak akses rusak = tanpa hak (jangan sampai menjatuhkan daftar pengguna)
 const hashPw = (pw) => { const salt = crypto.randomBytes(16); return `s1$${salt.toString("base64url")}$${crypto.scryptSync(String(pw), salt, 32).toString("base64url")}`; };
 const checkPw = (pw, stored) => { const [v, sl, h] = String(stored || "").split("$"); if (v !== "s1" || !sl || !h) return false; return sameSig(crypto.scryptSync(String(pw), Buffer.from(sl, "base64url"), 32).toString("base64url"), h); };
 // Hak yang boleh dimiliki akun klien (tenant): hanya melihat studio & link miliknya. Tidak pernah: penyimpanan, pengaturan umum, pengguna, token booth.
-const TENANT_PERMS = new Set(["studio.view", "link.view", "link.edit", "upload"]);
+const TENANT_PERMS = new Set(["studio.view", "link.view", "link.edit", "upload", "tx.view"]); // tx.edit (tandai TEST / hapus) sengaja TIDAK ada: klien tidak boleh mengubah catatan keuangan
 const envAdmin = () => ({ id: 0, username: process.env.ADMIN_USER || "admin", name: "Admin", admin: true, env: true, tenantId: null, perms: new Set(Object.keys(PERMS)) });
 const principalOf = (row) => {
   const tenantId = row.tenant_id || null, admin = row.role === "admin" && !tenantId; // akun klien tidak pernah admin penuh
@@ -666,6 +668,7 @@ app.delete("/admin/api/studios/:key/tokens/:id", adminAuth, needAdmin, (req, res
   res.json({ ok: true, revoked: Number(r.changes) > 0 });
 });
 
+require("./tx")(app, { db, auth, adminAuth, need, tid, studioGuard, skey, now, PUBLIC_URL });
 // ---- Cek koneksi menyeluruh: bucket, kasir, dan laporan sinkron tiap booth ----
 app.post("/admin/api/diagnostics", adminAuth, need("storage.view"), async (_req, res) => {
   const [buckets, kasir] = await Promise.all([

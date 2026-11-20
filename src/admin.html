@@ -118,7 +118,8 @@ tr.blk td{background:#FFF3F5}
  <nav id="nav">
   <a href="#ringkasan" data-p="ringkasan"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Ringkasan</span></a>
   <a href="#studio" data-p="studio" data-need="studio.view"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Studio</span></a>
-  <a href="#klien" data-p="klien" data-need="@admin"><svg viewBox="0 0 24 24"><path d="M3 20V9l6-4 6 4v11M15 20V12h6v8M7 20v-4h4v4"/></svg><span>Klien</span></a>
+  <a href="#transaksi" data-p="transaksi" data-need="tx.view"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6"/></svg><span>Transaksi</span></a>
+ <a href="#klien" data-p="klien" data-need="@admin"><svg viewBox="0 0 24 24"><path d="M3 20V9l6-4 6 4v11M15 20V12h6v8M7 20v-4h4v4"/></svg><span>Klien</span></a>
   <a href="#link" data-p="link" data-need="link.view"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span>Link pelanggan</span></a>
   <a href="#penyimpanan" data-p="penyimpanan" data-need="storage.view"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 8.5a4.5 4.5 0 0 1 .5 9Z"/></svg><span>Penyimpanan cloud</span></a>
   <a href="#pengguna" data-p="pengguna" data-need="@admin"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Pengguna</span></a>
@@ -212,6 +213,22 @@ Pilih <b>folder tanggal</b> (mis. <code>2026-10-23</code>) untuk mengunggah bany
 <div><label>Aktif</label><select id="f_enabled"><option value="1">Ya</option><option value="0">Tidak</option></select></div>
 </div><p class="muted" id="f_hint">R2: buat bucket PRIVATE + API token "Object Read & Write". Endpoint ada di halaman R2 (S3 API). Region: auto.</p><p style="margin:14px 0 0"><button class="btn" onclick="saveB()">Simpan bucket</button> <button class="btn s" onclick="hideF()">Batal</button> <span id="fmsg"></span></p></div>
  <div class="card"><h2>Daftar bucket</h2><div class="tw"><table id="bt"></table></div></div>
+</section>
+<section class="page" id="pg-transaksi">
+ <h1>Transaksi</h1><p class="lead">Riwayat pembayaran dari semua booth. Omzet hanya menghitung transaksi <b>lunas</b> dan <b>bukan TEST</b>. Tanggal memakai zona waktu laporan (WIB).</p>
+ <div class="card">
+  <div class="srow" style="flex-wrap:wrap;gap:8px">
+   <button class="btn sm s" type="button" onclick="xPreset('today')">Hari ini</button><button class="btn sm s" type="button" onclick="xPreset('7')">7 hari</button><button class="btn sm s" type="button" onclick="xPreset('month')">Bulan ini</button>
+   <input type="date" id="x_from" onchange="loadX()" style="width:auto"><span class="muted">s/d</span><input type="date" id="x_to" onchange="loadX()" style="width:auto">
+   <select id="x_st" onchange="loadX()" style="width:auto"></select>
+   <select id="x_status" onchange="loadX()" style="width:auto"><option value="">Semua status</option><option value="paid">Lunas</option><option value="pending">Menunggu</option><option value="expired">Kedaluwarsa</option></select>
+   <input id="x_q" placeholder="Cari no transaksi / template" maxlength="60" style="width:210px" onkeydown="if(event.key==='Enter')loadX()">
+   <span class="grow"></span><button class="btn sm" type="button" onclick="xCsv()">Ekspor CSV</button>
+  </div>
+ </div>
+ <div class="card" id="x_sum" style="display:flex;gap:26px;flex-wrap:wrap"></div>
+ <div class="card"><h2 style="margin:0 0 8px;font-size:16px">Omzet per hari</h2><div class="tw"><table id="x_day"></table></div></div>
+ <div class="card"><div class="tw"><table id="x_t"></table></div><p style="margin:12px 0 0"><button class="btn sm s" type="button" id="x_more" hidden onclick="loadX(true)">Muat lebih banyak</button> <span class="muted" id="x_info"></span></p></div>
 </section>
 <section class="page" id="pg-klien">
  <h1>Klien</h1><p class="lead">Klien = pelanggan Anda. Tiap klien punya banyak studio, dan akun milik klien hanya bisa melihat studionya sendiri. Klien dinonaktifkan = semua booth dan akunnya langsung berhenti.</p>
@@ -562,7 +579,7 @@ function mBuild(){const box=$('m_perms');if(box.dataset.done)return;box.dataset.
  box.innerHTML=Object.entries(ME.catalog).map(([k,t])=>`<label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:6px 0"><input type="checkbox" data-perm="${k}" onchange="mDeps(this)"> ${he(t)}</label>`).join('');
  $('m_preset').innerHTML='<option value="">Pilih paket…</option>'+ME.presets.map(p=>`<option value="${he(p.id)}">${he(p.label)}</option>`).join('')}
 const mSet=list=>document.querySelectorAll('#m_perms input').forEach(c=>{c.checked=list.includes(c.dataset.perm)});
-function mDeps(c){const imp={'studio.edit':'studio.view','link.edit':'link.view','upload':'link.view','storage.edit':'storage.view'};
+function mDeps(c){const imp={'tx.edit':'tx.view','studio.edit':'studio.view','link.edit':'link.view','upload':'link.view','storage.edit':'storage.view'};
  if(c.checked&&imp[c.dataset.perm])document.querySelector(`#m_perms input[data-perm="${imp[c.dataset.perm]}"]`).checked=true;
  if(!c.checked)document.querySelectorAll('#m_perms input').forEach(o=>{if(imp[o.dataset.perm]===c.dataset.perm)o.checked=false})}
 function mPreset(){const p=ME.presets.find(x=>x.id===$('m_preset').value);if(p)mSet(p.perms)}
@@ -604,16 +621,41 @@ async function newTok(){const r=await api('/admin/api/studios/'+encodeURICompone
 async function copyTok(){try{await navigator.clipboard.writeText($('t_val').value);toast('Token disalin.')}catch{$('t_val').select();toast('Tekan Ctrl+C untuk menyalin.')}}
 async function revokeTok(id){if(!await ask('Cabut token ini?','Booth yang memakai token ini langsung ditolak sampai diberi token baru.',{ok:'Ya, cabut'}))return;
  const r=await api('/admin/api/studios/'+encodeURIComponent(T.key)+'/tokens/'+id,{method:'DELETE'});if(r.ok){toast('Token dicabut.');drawT()}else toast(r.error||'Gagal',1)}
+
+// ---- Transaksi ----
+const X={off:0,tz:420,rows:[],canEdit:false};
+const rp=n=>'Rp '+(Number(n)||0).toLocaleString('id-ID');
+const xDate=(ms)=>new Date(ms+X.tz*60000).toISOString().slice(0,10);
+const xTime=(ms)=>{const d=new Date(ms+X.tz*60000).toISOString();return d.slice(8,10)+'/'+d.slice(5,7)+' '+d.slice(11,16)};
+function xPreset(k){const now=Date.now(),t=xDate(now);let f=t;if(k==='7')f=xDate(now-6*864e5);else if(k==='month')f=t.slice(0,8)+'01';$('x_from').value=f;$('x_to').value=t;loadX()}
+function xQS(extra){const q=new URLSearchParams();for(const [k,id] of [['from','x_from'],['to','x_to'],['studio','x_st'],['status','x_status'],['q','x_q']]){const v=$(id).value.trim();if(v)q.set(k,v)}for(const k in extra||{})q.set(k,extra[k]);return q.toString()}
+function xCsv(){const q=xQS();location.href='/admin/api/transactions.csv'+(q?'?'+q:'')}
+async function loadX(more){
+ X.canEdit=can('tx.edit');
+ if(!$('x_st').options.length){const r=await api('/admin/api/studios');const l=(r&&r.studios)||[];$('x_st').innerHTML='<option value="">Semua studio</option>'+l.map(x=>`<option value="${he(x.key)}">${he(x.name)}</option>`).join('')}
+ if(!$('x_from').value)xPreset('today');
+ if(!more){X.off=0;X.rows=[]}
+ const q=xQS({limit:30,offset:X.off});const r=await api('/admin/api/transactions?'+q);if(!r||!r.transactions){$('x_info').textContent='Gagal memuat.';return}
+ X.tz=r.tzOffsetMin;X.rows=X.rows.concat(r.transactions);X.off=X.rows.length;
+ const m=r.summary;$('x_sum').innerHTML=`<div><div class="muted">Omzet</div><div style="font-size:26px;font-weight:800">${rp(m.revenue)}</div></div><div><div class="muted">Transaksi lunas</div><div style="font-size:26px;font-weight:800">${m.paid}</div></div><div><div class="muted">Rata-rata</div><div style="font-size:26px;font-weight:800">${rp(m.avg)}</div></div><div><div class="muted">Dikecualikan (TEST)</div><div style="font-size:26px;font-weight:800">${m.tests}</div></div><div><div class="muted">Per metode</div><div>${m.byMethod.length?m.byMethod.map(b=>`${he(b.method.toUpperCase())}: ${b.n} · ${rp(b.amount)}`).join('<br>'):'–'}</div></div>`;
+ const ST={paid:'<span class="pill ok">Lunas</span>',pending:'<span class="pill">Menunggu</span>',expired:'<span class="pill bad">Kedaluwarsa</span>',failed:'<span class="pill bad">Gagal</span>',cancelled:'<span class="pill bad">Batal</span>'};
+ $('x_t').innerHTML=X.rows.length?'<tr><th>Waktu</th><th>No transaksi</th><th>Studio</th><th>Template</th><th>Metode</th><th style="text-align:right">Nominal</th><th>Status</th><th></th></tr>'+X.rows.map(t=>`<tr${t.test?' style="opacity:.6"':''}><td>${xTime(t.at)}</td><td style="font-family:monospace;font-size:12px">${he(t.orderNo)}</td><td>${he(t.studio)}${t.tenant?`<div class="muted">${he(t.tenant)}</div>`:''}</td><td>${he(t.template||t.mode)}</td><td>${he(t.method.toUpperCase())}</td><td style="text-align:right"><b>${rp(t.amount)}</b></td><td>${ST[t.status]||he(t.status)}${t.test?' <span class="pill">TEST</span>':''}</td><td><div class="acts">${t.galleryUrl?`<a class="btn sm s" href="${he(t.galleryUrl)}" target="_blank" rel="noopener">Galeri</a>`:''}${X.canEdit?` <button class="btn sm s" type="button" data-no="${he(t.orderNo)}" data-t="${t.test?0:1}" onclick="xTest(this.dataset.no,this.dataset.t==='1')">${t.test?'Bukan TEST':'Tandai TEST'}</button> <button class="btn sm d" type="button" data-no="${he(t.orderNo)}" onclick="xDel(this.dataset.no)">Hapus</button>`:''}</div></td></tr>`).join(''):'<tr><td class="muted" style="padding:18px 8px">Belum ada transaksi pada rentang ini.</td></tr>';
+ $('x_more').hidden=X.rows.length>=r.total;$('x_info').textContent=r.total?`Menampilkan ${X.rows.length} dari ${r.total}`:'';
+ if(!more){const d=await api('/admin/api/reports/daily?'+xQS());const days=(d&&d.days)||[],mx=Math.max(1,...days.map(x=>x.revenue));
+  $('x_day').innerHTML=days.length?'<tr><th>Tanggal</th><th>Transaksi</th><th style="text-align:right">Omzet</th><th style="width:40%"></th></tr>'+days.map(x=>`<tr><td>${he(x.date)}</td><td>${x.count}</td><td style="text-align:right"><b>${rp(x.revenue)}</b></td><td><div style="background:#E3592F;height:10px;border-radius:5px;width:${Math.max(2,Math.round(x.revenue/mx*100))}%"></div></td></tr>`).join(''):'<tr><td class="muted" style="padding:12px 8px">Belum ada omzet pada rentang ini.</td></tr>'}}
+async function xTest(no,v){const r=await api('/admin/api/transactions/'+encodeURIComponent(no),{method:'POST',body:JSON.stringify({test:v})});if(r.ok){toast(v?'Ditandai TEST — tidak dihitung sebagai omzet.':'Dihitung sebagai omzet.');loadX()}else toast(r.error||'Gagal',1)}
+async function xDel(no){if(!await ask('Hapus transaksi '+no+'?','Transaksi hilang dari riwayat dan omzet. Booth akan menyesuaikan, dan galeri foto transaksi ini ikut dihapus.',{ok:'Ya, hapus'}))return;
+ const r=await api('/admin/api/transactions/'+encodeURIComponent(no),{method:'DELETE'});if(r.ok){toast('Transaksi dihapus.');loadX()}else toast(r.error||'Gagal',1)}
 function applyMe(){document.querySelectorAll('[data-need]').forEach(el=>{const n=el.dataset.need;el.classList.toggle('noperm',!(n==='@admin'?ME.admin:can(n)))});
  $('who').textContent=(ME.name||ME.username)+' · '+(ME.admin?'admin':ME.tenantName?'klien '+ME.tenantName:'staf');$('pwbtn').classList.toggle('noperm',!!ME.env)}
 // ---- menu samping (hash: #ringkasan, #studio, #link, #penyimpanan, #pengaturan) ----
-const PAGES=['ringkasan','studio','klien','link','penyimpanan','pengaturan','pengguna'];
+const PAGES=['ringkasan','studio','transaksi','klien','link','penyimpanan','pengaturan','pengguna'];
 const pageOk=p=>{const a=document.querySelector(`#nav a[data-p="${p}"]`);return !!a&&!a.classList.contains('noperm')};
 if((location.hash||'')==='#unggah')history.replaceState(null,'','#link'),window.__openU=1; // alamat lama
 function nav(){const id=PAGES.includes((location.hash||'').slice(1))&&pageOk(location.hash.slice(1))?location.hash.slice(1):'ringkasan';
  PAGES.forEach(p=>{$('pg-'+p).className='page'+(p===id?' on':'')});
  document.querySelectorAll('#nav a').forEach(a=>{const on=a.dataset.p===id;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
- document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='klien')loadK();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
+ document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='klien')loadK();if(id==='transaksi')loadX();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
 window.addEventListener('hashchange',nav);
 window.addEventListener('hashchange',()=>{if(location.hash==='#unggah'){history.replaceState(null,'','#link');nav();if(can('upload'))showU()}});
 $('ham').addEventListener('click',()=>document.body.classList.toggle('open'));$('scrim').addEventListener('click',()=>document.body.classList.remove('open'));

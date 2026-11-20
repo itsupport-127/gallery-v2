@@ -119,4 +119,19 @@ CREATE INDEX IF NOT EXISTS idx_booth_tokens_skey ON booth_tokens(skey);`);
 try { db.exec("ALTER TABLE users ADD COLUMN tenant_id INTEGER"); } catch { /* sudah ada */ }
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_studios_tenant ON studios(tenant_id)"); } catch { /* abaikan */ }
 
+// ---- Riwayat transaksi (dikirim booth lewat protokol /api/photobox/*; menggantikan aplikasi kasir) ----
+db.exec(`CREATE TABLE IF NOT EXISTS transactions (
+  order_no TEXT PRIMARY KEY,                 -- PB-<KODE>-<YYMMDD>-<URUT> (dibuat booth)
+  skey TEXT NOT NULL,                        -- studio pemilik (dari token booth, bukan dari isi kiriman)
+  template_id TEXT, template_name TEXT, category TEXT, mode TEXT, method TEXT, voucher_code TEXT,
+  amount INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'paid',
+  created_ms INTEGER, paid_ms INTEGER, session_id TEXT, meta_json TEXT,
+  is_test INTEGER NOT NULL DEFAULT 0,        -- tanda dari booth (uang simulasi / sandbox)
+  admin_test INTEGER,                        -- koreksi admin: NULL = ikut booth, 1 = TEST, 0 = bukan TEST
+  deleted_at INTEGER,                        -- dihapus admin (baris tetap ada supaya nomor tidak dipakai ulang)
+  admin_changed_ms INTEGER,                  -- kapan admin terakhir mengubah (booth menarik perubahan lewat /changes)
+  received_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_tx_skey_paid ON transactions(skey, paid_ms);
+CREATE INDEX IF NOT EXISTS idx_tx_changed ON transactions(skey, admin_changed_ms);`);
+
 module.exports = { db, getSetting, setSetting, retentionDays, DATA_DIR };
