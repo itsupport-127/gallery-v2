@@ -20,14 +20,14 @@ const normToken = (t) => { const s = String(t || ""); const c = s.replace(/[\s-]
 const EXTS = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", mp4: "video/mp4", webm: "video/webm" };
 const MAX_FILE = 300 * 1024 * 1024, MAX_FILES = 80;
 const KINDS = {
-  final: { group: "main", rank: 1, label: () => "Foto template", name: () => "popsnap-foto" },
-  boomerang: { group: "main", rank: 2, label: () => "Boomerang", name: () => "popsnap-boomerang" },
-  video: { group: "main", rank: 3, label: () => "Video", name: () => "popsnap-video" },
-  live: { group: "main", rank: 4, label: () => "Video Live (momen bergerak)", name: () => "popsnap-live" },
-  gif: { group: "main", rank: 5, label: () => "GIF foto", name: () => "popsnap-gif" },
-  gifplain: { group: "main", rank: 6, label: () => "GIF foto polos", name: () => "popsnap-gif-polos" },
-  raw: { group: "raw", rank: 7, label: (i) => `Foto mentah ${i}`, name: (i) => `popsnap-mentah-${i}` },
-  clip: { group: "clips", rank: 8, label: (i) => `Klip foto ${i}`, name: (i) => `popsnap-klip-${i}` },
+  final: { group: "main", rank: 1, label: () => "Foto template", name: () => "weneva-foto" },
+  boomerang: { group: "main", rank: 2, label: () => "Boomerang", name: () => "weneva-boomerang" },
+  video: { group: "main", rank: 3, label: () => "Video", name: () => "weneva-video" },
+  live: { group: "main", rank: 4, label: () => "Video Live (momen bergerak)", name: () => "weneva-live" },
+  gif: { group: "main", rank: 5, label: () => "GIF foto", name: () => "weneva-gif" },
+  gifplain: { group: "main", rank: 6, label: () => "GIF foto polos", name: () => "weneva-gif-polos" },
+  raw: { group: "raw", rank: 7, label: (i) => `Foto mentah ${i}`, name: (i) => `weneva-mentah-${i}` },
+  clip: { group: "clips", rank: 8, label: (i) => `Klip foto ${i}`, name: (i) => `weneva-klip-${i}` },
 };
 const now = () => Date.now();
 const safe = (s, max = 40) => String(s ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, max) || "studio";
@@ -53,7 +53,7 @@ const bucketById = (id) => db.prepare("SELECT * FROM buckets WHERE id = ?").get(
 
 // ---------- Kesehatan bucket: tes tulis/baca/hapus, ditandai sehat / bermasalah ----------
 async function testBucket(b) {
-  const t0 = Date.now(), key = `_test/${crypto.randomBytes(6).toString("hex")}.txt`, body = "popsnap-test";
+  const t0 = Date.now(), key = `_test/${crypto.randomBytes(6).toString("hex")}.txt`, body = "weneva-test";
   try {
     const put = await s3.call(b, "PUT", key, { body, headers: { "Content-Type": "text/plain" }, timeoutMs: 15000 });
     if (!put.ok) return { ok: false, step: "tulis", ms: Date.now() - t0, error: put.status === 403 ? "Access key / secret key salah atau tidak punya izin Object Read & Write (HTTP 403)." : put.status === 404 ? "Nama bucket atau endpoint tidak ditemukan (HTTP 404)." : `Gagal menulis (HTTP ${put.status}).` };
@@ -292,7 +292,7 @@ app.post("/api/v1/status", (req, res) => {
 
 // Daftar sesi terbaru untuk KASIR: kasir menarik sesi yang belum punya transaksi (mis. hasil UNGGAH MANUAL saat internet booth mati)
 // supaya tombol WhatsApp di kasir tetap bisa dipakai seperti biasa. Dilindungi kunci bersama (env KASIR_API_KEY di galeri =
-// POPSNAP_GALLERY_KEY di kasir); tanpa kunci endpoint ini mati. Hanya data ringkas, bukan isi/link file.
+// WENEVA_GALLERY_KEY di kasir); tanpa kunci endpoint ini mati. Hanya data ringkas, bukan isi/link file.
 app.get("/api/v1/recent", (req, res) => {
   const key = process.env.KASIR_API_KEY || "";
   const given = String(req.get("authorization") || "").replace(/^Bearer\s+/i, "");
@@ -410,7 +410,7 @@ app.get("/s/:token/all.zip", async (req, res) => {
   const cat = ["photo", "gif", "live"].includes(req.query.cat) ? req.query.cat : "";
   const files = cat ? catFiles(listFiles(s), cat) : listFiles(s);
   if (!files.length) return res.status(404).type("html").send(messagePage("File belum tersedia"));
-  res.set({ "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="popsnap-${cat || "sesi"}.zip"` });
+  res.set({ "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="weneva-${cat || "sesi"}.zip"` });
   let aborted = false; res.on("close", () => { aborted = true; });
   const items = files.map((f) => ({ f, name: f.group === "clips" ? `klip/${f.name}` : f.group === "raw" ? `foto-mentah/${f.name}` : f.name, size: Number(f.size) || 0 }));
   const exact = items.every((x) => x.size > 0);

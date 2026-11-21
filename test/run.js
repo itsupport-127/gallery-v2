@@ -92,7 +92,7 @@ console.log("ok  region Backblaze B2 diambil dari endpoint, path-style benar");
   console.log("ok  sesi: presign -> unggah -> konfirmasi, idempotent, isolasi studio");
 
   const html = await (await fetch(`${base}/s/${token}`)).text();
-  assert(html.includes("POPSNAP") && html.includes("Diambil di Studio A") && html.indexOf("Photo Frame") > 0 && html.indexOf("Photo Frame") < html.indexOf('class="card rest"') && html.includes("1 Photo") && html.includes("GIF Frame") && html.includes(`all.zip?cat=photo`) && html.includes(`all.zip?cat=live`));
+  assert(html.includes("WENEVA") && html.includes("Diambil di Studio A") && html.indexOf("Photo Frame") > 0 && html.indexOf("Photo Frame") < html.indexOf('class="card rest"') && html.includes("1 Photo") && html.includes("GIF Frame") && html.includes(`all.zip?cat=photo`) && html.includes(`all.zip?cat=live`));
   assert(html.includes("response-content-disposition"), "tombol unduh harus memaksa download");
   console.log("ok  halaman: tab GIF/Photo/Live, frame di atas, mentahan (carousel) di bawah, unduh paksa");
 
@@ -131,7 +131,7 @@ console.log("ok  region Backblaze B2 diambil dari endpoint, path-style benar");
   const out = require("child_process").spawnSync("unzip", ["-t", "/tmp/gal-test.zip"], { encoding: "utf8" });
   assert(/No errors detected/.test(out.stdout), out.stdout + out.stderr);
   const ls = require("child_process").spawnSync("unzip", ["-Z1", "/tmp/gal-test.zip"], { encoding: "utf8" }).stdout.trim().split("\n");
-  assert.strictEqual(ls.length, 5); assert(ls.includes("foto-mentah/popsnap-mentah-1.jpg") && ls.includes("klip/popsnap-klip-1.mp4"));
+  assert.strictEqual(ls.length, 5); assert(ls.includes("foto-mentah/weneva-mentah-1.jpg") && ls.includes("klip/weneva-klip-1.mp4"));
   console.log("ok  ZIP streaming valid (" + ls.length + " file)");
 
   // ZIP bisa dimatikan: tombol jadi "Unduh semua" satu per satu, link ZIP ditolak
@@ -150,7 +150,7 @@ console.log("ok  region Backblaze B2 diambil dari endpoint, path-style benar");
   { // ZIP per kategori: foto = hasil template + mentahan saja (tanpa GIF/klip)
     require("fs").writeFileSync("/tmp/gal-cat.zip", Buffer.from(await (await fetch(`${base}/s/${token}/all.zip?cat=photo`)).arrayBuffer()));
     const names = require("child_process").spawnSync("unzip", ["-Z1", "/tmp/gal-cat.zip"], { encoding: "utf8" }).stdout.trim().split("\n");
-    assert(names.some((n) => n.includes("popsnap-foto")) && names.some((n) => n.includes("mentah")) && !names.some((n) => n.includes("gif") || n.includes("klip")), names.join(","));
+    assert(names.some((n) => n.includes("weneva-foto")) && names.some((n) => n.includes("mentah")) && !names.some((n) => n.includes("gif") || n.includes("klip")), names.join(","));
   }
   console.log("ok  pengaturan ZIP on/off + tab Photo/GIF/Live + ZIP per kategori");
 

@@ -1,6 +1,6 @@
-# POPSNAP Galeri
+# WENEVA Galeri
 
-Halaman unduh untuk QR di booth. Tamu scan QR → halaman POPSNAP berisi **hasil template (atas)** dan **foto mentah + klip (bawah)**, tombol unduh per file dan "Unduh semua (ZIP)".
+Halaman unduh untuk QR di booth. Tamu scan QR → halaman WENEVA berisi **hasil template (atas)** dan **foto mentah + klip (bawah)**, tombol unduh per file dan "Unduh semua (ZIP)".
 
 * File **tidak disimpan di VPS**. Booth mengunggah langsung ke cloud S3-kompatibel (Cloudflare R2, Backblaze B2, AWS S3, Wasabi, dll.) memakai URL bertanda tangan dari layanan ini. VPS hanya menyimpan daftar file (database kecil) dan menampilkan halaman.
 * Bisa memakai **banyak bucket / banyak akun**. Sesi baru masuk ke bucket berprioritas terkecil yang masih muat; kalau penuh atau gagal pindah otomatis.
@@ -30,7 +30,7 @@ Di DNS Cloudflare: record `foto` → IP VPS (atau CNAME ke host duckdns Anda), p
 
 ## Siapkan bucket Cloudflare R2 (gratis 10 GB per akun)
 
-1. Cloudflare → R2 → *Create bucket* (mis. `popsnap-1`). **Biarkan private** (tidak perlu public access).
+1. Cloudflare → R2 → *Create bucket* (mis. `weneva-1`). **Biarkan private** (tidak perlu public access).
 2. R2 → *Manage API tokens* → *Create API token* → izin **Object Read & Write** → pilih bucket itu. Catat **Access Key ID**, **Secret Access Key**, dan alamat S3 (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`).
 3. Buka `https://foto.domainanda.com/admin` → *Tambah bucket*: Endpoint = alamat S3 tadi, Region = `auto`, isi nama bucket & key, prioritas, batas GB (mis. 9) → Simpan → **Tes**.
 4. Punya akun R2 lain? Tambahkan bucket lagi. Kapasitas digabung otomatis.
@@ -43,7 +43,7 @@ Di aplikasi booth: **Admin → Pembayaran → kartu "Galeri cloud"**: isi alamat
 
 ## Siapkan bucket Backblaze B2 (gratis 10 GB)
 
-1. Daftar di backblaze.com → *Buckets* → *Create a Bucket* (mis. `popsnap-b2`), **Private**, enkripsi bawaan boleh. Catat *S3 Endpoint* (mis. `s3.us-west-004.backblazeb2.com`) — region ikut dari alamat ini.
+1. Daftar di backblaze.com → *Buckets* → *Create a Bucket* (mis. `weneva-b2`), **Private**, enkripsi bawaan boleh. Catat *S3 Endpoint* (mis. `s3.us-west-004.backblazeb2.com`) — region ikut dari alamat ini.
 2. *Application Keys* → *Add a New Application Key*: batasi ke bucket itu, izin **Read and Write**. Catat **keyID** dan **applicationKey** (applicationKey hanya tampil sekali).
 3. Di `/admin` galeri → *Tambah bucket* → Jenis **Backblaze B2**: Endpoint = `https://s3.us-west-004.backblazeb2.com`, Region dikosongkan, Access key = keyID, Secret = applicationKey. Simpan → **Tes**.
 4. Unduhan pelanggan gratis sampai 3x dari jumlah yang tersimpan; foto yang dihapus otomatis setelah 7–15 hari membuat ini aman. Opsional: *Lifecycle Settings* bucket → hapus file lebih dari 30 hari sebagai jaring pengaman.
@@ -52,7 +52,7 @@ Di aplikasi booth: **Admin → Pembayaran → kartu "Galeri cloud"**: isi alamat
 
 ## Unggah manual dari PC CS (kalau internet booth bermasalah)
 
-Booth menyimpan hasil di folder output (mis. `D:\HASIL` / `POPSNAP-Photos`) dan folder itu dibagikan di jaringan studio. Di tiap folder sesi booth menulis `popsnap-share.json` (berisi token link yang sama dengan QR).
+Booth menyimpan hasil di folder output (mis. `D:\HASIL` / `WENEVA-Photos`) dan folder itu dibagikan di jaringan studio. Di tiap folder sesi booth menulis `popsnap-share.json` (berisi token link yang sama dengan QR).
 
 1. Di PC CS buka `https://foto.domainanda.com/admin` (login admin galeri).
 2. Bagian **Unggah manual dari PC CS** → **Pilih folder…** → pilih folder tanggal (banyak sesi sekaligus) atau satu folder sesi dari drive jaringan booth.

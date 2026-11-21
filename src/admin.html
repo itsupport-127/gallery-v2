@@ -1,4 +1,4 @@
-<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>POPSNAP Galeri — Admin</title><link rel="icon" href="/assets/icon-popsnap.ico">
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>WENEVA Galeri — Admin</title><link rel="icon" href="/assets/icon-weneva.ico">
 <style>
 @font-face{font-family:"Fredoka";font-weight:700;font-style:normal;font-display:swap;src:url(/assets/fredoka-700.woff2) format("woff2")}
 @font-face{font-family:"Plus Jakarta Sans";font-weight:200 800;font-style:normal;font-display:swap;src:url(/assets/jakarta.woff2) format("woff2")}
@@ -109,11 +109,11 @@ tr.blk td{background:#FFF3F5}
 @media (prefers-reduced-motion:reduce){aside,button.btn{transition:none}}
 #bform[hidden],#u_panel[hidden]{display:none}
 </style></head><body>
-<div class="topbar"><button class="ham" id="ham" aria-label="Buka menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><img src="/assets/welcome-logo.svg" alt="POPSNAP"></div>
+<div class="topbar"><button class="ham" id="ham" aria-label="Buka menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><img src="/assets/welcome-logo.svg" alt="WENEVA"></div>
 <div class="scrim" id="scrim"></div>
 <div class="layout">
 <aside>
- <img class="brand" src="/assets/welcome-logo.svg" alt="POPSNAP">
+ <img class="brand" src="/assets/welcome-logo.svg" alt="WENEVA">
  <p class="tag">GALERI · ADMIN</p>
  <nav id="nav">
   <a href="#ringkasan" data-p="ringkasan"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Ringkasan</span></a>
@@ -655,7 +655,7 @@ if((location.hash||'')==='#unggah')history.replaceState(null,'','#link'),window.
 function nav(){const id=PAGES.includes((location.hash||'').slice(1))&&pageOk(location.hash.slice(1))?location.hash.slice(1):'ringkasan';
  PAGES.forEach(p=>{$('pg-'+p).className='page'+(p===id?' on':'')});
  document.querySelectorAll('#nav a').forEach(a=>{const on=a.dataset.p===id;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
- document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='klien')loadK();if(id==='transaksi')loadX();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='POPSNAP Galeri — '+document.querySelector('#nav a.on span').textContent}
+ document.body.classList.remove('open');window.scrollTo(0,0);if(id==='link')loadL(true);if(id==='studio')loadS();if(id==='klien')loadK();if(id==='transaksi')loadX();if(id==='pengguna')loadM();if(id==='ringkasan'&&typeof liveTick==='function')liveTick();document.title='WENEVA Galeri — '+document.querySelector('#nav a.on span').textContent}
 window.addEventListener('hashchange',nav);
 window.addEventListener('hashchange',()=>{if(location.hash==='#unggah'){history.replaceState(null,'','#link');nav();if(can('upload'))showU()}});
 $('ham').addEventListener('click',()=>document.body.classList.toggle('open'));$('scrim').addEventListener('click',()=>document.body.classList.remove('open'));

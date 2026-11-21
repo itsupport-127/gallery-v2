@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  DEPLOY - Popsnap Gallery
+#  DEPLOY - Weneva Gallery
 #  Jalankan dari: ~/apps/
 #  Usage: bash deploy-gallery.sh
 # ============================================================
@@ -13,7 +13,7 @@ PORT_INTERNAL=8088   # port container (internal, hanya localhost)
 PORT_HTTPS=8588      # port HTTPS publik yang diakses dari luar
 
 echo "======================================"
-echo "  DEPLOY - Popsnap Gallery"
+echo "  DEPLOY - Weneva Gallery"
 echo "======================================"
 
 # ----------------------------------------------------------
